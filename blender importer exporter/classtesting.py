@@ -20,11 +20,17 @@ class Test():
     gfmodel.GFMeshes[0].getfixedattributestest()
     fattributes = gfmodel.GFMeshes[0].GFSubMeshes.GFSubMeshes[0].fixedattributes
     attributes = gfmodel.GFMeshes[0].GFSubMeshes.GFSubMeshes[0].attributes
+    rawbuffer = gfmodel.GFMeshes[0].GFSubMeshes.GFSubMeshes[0].gfsubmeshpart2.rawbuffer
+    indices = gfmodel.GFMeshes[0].GFSubMeshes.GFSubMeshes[0].gfsubmeshpart2.indices
+    vertexstride = gfmodel.GFMeshes[0].GFSubMeshes.GFSubMeshes[0].vertexstride
+    verticeslength = gfmodel.GFMeshes[0].GFSubMeshes.GFSubMeshes[0].gfsubmeshpart1.verticeslength
     i = 0
     for x in range(len(fattributes)):
         print(fattributes[i].name)
         i += 1
     print("---------------")
+    print(verticeslength)
+    print(vertexstride)
     i2 = 0
     for x in range(len(attributes)):
         print(attributes[i2].name)

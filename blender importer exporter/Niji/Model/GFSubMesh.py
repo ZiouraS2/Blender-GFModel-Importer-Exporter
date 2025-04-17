@@ -1,5 +1,6 @@
 import os
 import sys
+import io
 from . import helperfunctions
 from . import PicaCommandReader
 from . import PicaFixedAttribute
@@ -22,8 +23,9 @@ class GFSubMeshPart1(object):
             
 class GFSubMeshPart2(object): 
     def __init__(self,file,i,GFSubMeshesPart1):
-            self.rawbuffer = file.read(GFSubMeshesPart1[i].verticeslength)
-            self.indices = file.read(GFSubMeshesPart1[i].indiceslength)
+            # storing in ram so we don't ever accidentally write over the original model data
+            self.rawbuffer = io.BytesIO(file.read(GFSubMeshesPart1[i].verticeslength))
+            self.indices = io.BytesIO(file.read(GFSubMeshesPart1[i].indiceslength))
             
 
 class GFSubMeshParts(object):  

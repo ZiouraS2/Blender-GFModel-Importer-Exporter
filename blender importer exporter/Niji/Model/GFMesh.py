@@ -79,7 +79,8 @@ class GFMesh(object):
                 bufferattributes |= currcommand.parameters[0]
             if(currcommand.register.name == "GPUREG_ATTRIBBUFFER0_CONFIG2"):
                 bufferattributes |= (currcommand.parameters[0] & 0xffff) << 32
-                submesh.vertexstride = (currcommand.parameters[0] >> 16)
+                submesh.vertexstride = ((currcommand.parameters[0] >> 16)&0xff)#we only want the last byte for some reason
+                print(submesh.vertexstride)
                 attributescount = (currcommand.parameters[0] >> 28)
             if(currcommand.register.name == "GPUREG_FIXEDATTRIB_INDEX"):
                 fixedindex = currcommand.parameters[0]
