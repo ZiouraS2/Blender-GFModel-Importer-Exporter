@@ -27,6 +27,7 @@ class GFMesh(object):
     def __init__(self,file):
         self.meshgfsection = GFSection.GFSection(file)
         self.namehash = file.read(4)
+        print(file.tell())
         self.namestr = file.read(64).decode("utf-8")
         print(self.namestr)
         helperfunctions.skippadding1(4,file)

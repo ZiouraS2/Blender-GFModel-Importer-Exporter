@@ -41,7 +41,11 @@ class GFSubMeshParts(object):
             tempGFSubMeshPart2 = GFSubMeshPart2(file,count,self.GFSubMeshesPart1)
             self.GFSubMeshesPart2.append(tempGFSubMeshPart2)
             count = count + 1
-        helperfunctions.skippadding(file)
+        #there's still still a buffer between sections even if indices end inline with the 16th address
+        if((file.tell() & 0xF) == 0):
+            helperfunctions.skippadding1(16,file)
+        else:
+            helperfunctions.skippadding3(file)
 class GFSubMesh(object):        
     
     def __init__(self,submeshparts,i):
