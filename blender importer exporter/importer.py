@@ -8,8 +8,8 @@ from mathutils import Vector, Matrix
 
 # Import the Niji library
 # Module is now local to addon
-from .Niji.Model.GFModel import GFModel
-from .Niji.Model.PicaCommandReader import PicaCommandReader
+from Niji.Model.GFModel import GFModel
+from Niji.Model.PicaCommandReader import PicaCommandReader
 
 def load_gfmdl(filepath, import_bones=True, import_materials=True):
     print(f"Loading GFMDL file: {filepath}")
@@ -183,13 +183,14 @@ def extract_vertex_data(submesh):
             # Read the elements for this attribute
             for e in range(attr.elements):
                 if attr.attribformat.name == "Float":
-                    value = struct.unpack('f', rawbuffer.read(4))
+                    # why does struct use tuples lmao
+                    value = struct.unpack('f', rawbuffer.read(4))[0]
                 elif attr.attribformat.name == "Short": 
                     value = int.from_bytes(rawbuffer.read(2), "little")
                 elif attr.attribformat.name == "Ubyte":
                     value = int.from_bytes(rawbuffer.read(1), "little")
                 elif attr.attribformat.name == "Byte":
-                    value = struct.unpack('h', rawbuffer.read(4))
+                    value = struct.unpack('h', rawbuffer.read(4))[0]
                 else:
                     rawbuffer.read(4)  # Skip unknown format
                     value = 0

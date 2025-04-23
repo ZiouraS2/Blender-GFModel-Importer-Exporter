@@ -4,7 +4,7 @@ bl_info = {
     "category": "Import-Export",
     "location": "File > Import/Export > GFMDL (.gfmodel)",
     "description": "Import and export Gen 7 Pokemon model files",
-    "author": "ZiouraS2"
+    "author": "ZiouraS2",
     "version": (1, 6, 0),
     "support": "COMMUNITY",
     "warning": "",
