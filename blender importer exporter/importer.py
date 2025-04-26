@@ -3,13 +3,15 @@ import os
 import sys
 import io
 import struct
+import mathutils
+import math
 import numpy as np
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, Euler
 
 # Import the Niji library
 # Module is now local to addon
-from Niji.Model.GFModel import GFModel
-from Niji.Model.PicaCommandReader import PicaCommandReader
+from .Niji.Model.GFModel import GFModel
+from .Niji.Model.PicaCommandReader import PicaCommandReader
 
 def load_gfmdl(filepath, import_bones=True, import_materials=True):
     print(f"Loading GFMDL file: {filepath}")
@@ -103,17 +105,26 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 # Add armature modifier if we have bones
                 if armature and (bone_weights or bone_indices):
                     # Create vertex groups for bones
+                    print("bone indicess")
+                    print(submesh_name)
+                    print(len(bone_indices))
                     if bone_weights and bone_indices:
                         for v_idx, (weights, indices) in enumerate(zip(bone_weights, bone_indices)):
                             for b_idx, (weight, index) in enumerate(zip(weights, indices)):
                                 if weight > 0:
                                     # Convert index to integer
-                                    bone_index = int(index)
-                                    bone_name = f"Bone_{bone_index}"
-                                    if bone_index < len(gfmodel.GFBones):
-                                        if hasattr(gfmodel.GFBones[int(index)], 'name') and gfmodel.GFBones[int(index)].name.strip('\x00'):
-                                            bone_name = gfmodel.GFBones[int(index)].name.strip('\x00')
+                                    indices = submesh.gfsubmeshpart1.boneindices
+                                    index = int(index)
                                     
+                                    #access list of bones used in this submesh for the correct armature bone
+                                    bone_index = indices[index]
+                                    
+                                    bone_name = f"Bone_{bone_index}"
+                                    
+                                    if bone_index < len(gfmodel.GFBones):
+                                        if hasattr(gfmodel.GFBones[int(index)], 'bonename') and gfmodel.GFBones[int(index)].bonename.strip('\x00'):
+                                            bone_name = gfmodel.GFBones[bone_index].bonename.strip('\x00')
+                                            
                                     # Create vertex group if it doesn't exist
                                     if bone_name not in obj.vertex_groups:
                                         obj.vertex_groups.new(name=bone_name)
@@ -129,9 +140,17 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                     
                     # Parent object to armature
                     obj.parent = armature
+                else:
+                    print("no bone indicess")
+                    print(submesh_name)
                 
                 created_objects.append(obj)
                 
+        # Orient mesh properly
+        obj = [o for o in created_objects if o.type == 'MESH']
+        for o in obj:
+            RotateObj(o, 90, 'X')
+            
         # Select all created objects
         for obj in created_objects:
             obj.select_set(True)
@@ -152,6 +171,7 @@ def extract_vertex_data(submesh):
     # Get raw buffer and attributes
     rawbuffer = submesh.gfsubmeshpart2.rawbuffer
     attributes = submesh.attributes
+    fixedattributes = submesh.fixedattributes
     vertexstride = submesh.vertexstride
     verticeslength = submesh.gfsubmeshpart1.verticeslength
     
@@ -172,7 +192,9 @@ def extract_vertex_data(submesh):
             'texcoord0': None,
             'color': None,
             'boneweight': None,
-            'boneindex': None
+            'boneindex': None,
+            'texcoord1': None,
+            'texcoord2': None
         }
         
         # Read all attributes for this vertex
@@ -196,8 +218,11 @@ def extract_vertex_data(submesh):
                     value = 0
                 
                 # Apply scale if needed
-                # always apply scale actually
-                value = float(value) * attr.scale
+                # always apply scale unless bone index(lol)
+                if(attr.name.name == "BoneIndex"):
+                    value = float(value) * 1
+                else:
+                    value = float(value) * attr.scale
                 elements.append(value)
             
             # Store the data by attribute name
@@ -229,13 +254,30 @@ def extract_vertex_data(submesh):
         
         # Add bone weights and indices if available
         if vertex_data['boneweight']:
+            #each access to this array will have another array with a list of bone weights
             bone_weights.append(vertex_data['boneweight'])
         if vertex_data['boneindex']:
+            #each access to this array will have another array with a list of bone indexes(aka elements[])
+            #print(vertex_data['boneindex'])
             bone_indices.append(vertex_data['boneindex'])
+            
+    # add attributes from fixed attributes:
+    for fixattr in fixedattributes:
+        fixattrname = fixattr.name.name.lower()
+        print("fixedattrbute")
+        print(fixattrname)
+        print(fixattr.value)
+        values = np.array([fixattr.value.X,fixattr.value.Y,fixattr.value.Z,fixattr.value.W])
+        temparray = np.vstack((values,)*num_vertices)
+        if (fixattrname == "boneweight"):
+            bone_weights = temparray.tolist()
+        if (fixattrname == "boneindex"):
+            bone_indices = temparray.tolist()
     
     return vertices, normals, uvs, colors, bone_weights, bone_indices
 
 def extract_face_indices(submesh):
+
     faces = []
     indices_buffer = submesh.gfsubmeshpart2.indices
     indices_buffer.seek(0)
@@ -257,11 +299,23 @@ def extract_face_indices(submesh):
     
     return faces
 
+#from reisaskyu gfbmdl plugin
+def RotateObj(obj, angle, axis):
+    rot_mat = Matrix.Rotation(math.radians(angle), 4, axis)
+
+    orig_loc, orig_rot, orig_scale = obj.matrix_world.decompose()
+    orig_loc_mat = Matrix.Translation(orig_loc)
+    orig_rot_mat = orig_rot.to_matrix().to_4x4()
+    orig_scale_mat = Matrix.Scale(orig_scale[0],4,(1,0,0)) @ Matrix.Scale(orig_scale[1],4,(0,1,0)) @ Matrix.Scale(orig_scale[2],4,(0,0,1))
+
+    obj.matrix_world = orig_loc_mat @ rot_mat @ orig_rot_mat @ orig_scale_mat 
+
 def create_armature(gfmodel, model_name):
     # Create armature
     arm_data = bpy.data.armatures.new(f"{model_name}_Armature")
     arm_obj = bpy.data.objects.new(f"{model_name}_Skeleton", arm_data)
     bpy.context.collection.objects.link(arm_obj)
+    print(type(arm_obj))
     
     # Make armature active and enter edit mode
     bpy.context.view_layer.objects.active = arm_obj
@@ -271,46 +325,50 @@ def create_armature(gfmodel, model_name):
     bones = {}
     for bone_idx, gfbone in enumerate(gfmodel.GFBones):
         bone_name = f"Bone_{bone_idx}"
-        if hasattr(gfbone, 'name') and gfbone.name.strip('\x00'):
-            bone_name = gfbone.name.strip('\x00')
+        if hasattr(gfbone, 'bonename') and gfbone.bonename.strip('\x00'):
+            bone_name = gfbone.bonename.strip('\x00')
         
         bone = arm_data.edit_bones.new(bone_name)
-        bone.head = (0, 0, 0)
-        bone.tail = (0, 0.1, 0)  # Give it some length
+        #bone.use_inherit_rotation = True
         
-        # Set parent if it has one
-        if hasattr(gfbone, 'parent') and gfbone.parent != -1 and gfbone.parent < bone_idx:
-            parent_name = f"Bone_{gfbone.parent}"
-            if gfbone.parent < len(gfmodel.GFBones):
-                if hasattr(gfmodel.GFBones[gfbone.parent], 'name') and gfmodel.GFBones[gfbone.parent].name.strip('\x00'):
-                    parent_name = gfmodel.GFBones[gfbone.parent].name.strip('\x00')
-            
-            if parent_name in arm_data.edit_bones:
-                bone.parent = arm_data.edit_bones[parent_name]
+        #create matrix based on bone positions(which are relative to parent positions)
+        bone_matrix = mathutils.Matrix.LocRotScale((gfbone.TranslationX[0],gfbone.TranslationY[0], gfbone.TranslationZ[0]),mathutils.Euler((gfbone.RotationX[0],gfbone.RotationY[0],gfbone.RotationZ[0]), 'XYZ'),(gfbone.ScaleX[0],gfbone.ScaleY[0], gfbone.ScaleZ[0]))
+        bone.matrix = bone_matrix
+      
+        #make tail slightly bigger so blender no delete
+        bone.head = (0,0,0)
+        bone.tail = (0,0,0.1)
         
+        if(gfbone.boneparentname != "placeholder"):
+            key = arm_obj.data.edit_bones.find(gfbone.boneparentname)
+            if(key != -1):
+                parentbone = arm_obj.data.edit_bones[gfbone.boneparentname]
+            bone.matrix = parentbone.matrix @ bone_matrix
+        
+       
+        print("gfmdl bone location")
+        print(gfbone.bonename)
+        print(bone.matrix)
+        
+        
+        #bone.use_connect = True
+
+                      
         # Store the bone for later use
         bones[bone_name] = bone
-    
+        
+    #find parent after all bones have actually been added
+    for i, bonename in enumerate(bones):
+            bone = bones[bonename]
+            gfbone = gfmodel.GFBones[i]
+            key = arm_obj.data.edit_bones.find(gfbone.boneparentname)
+            if(key != -1):
+                bone.parent = arm_obj.data.edit_bones[gfbone.boneparentname]
+            
     # Exit edit mode
     bpy.ops.object.mode_set(mode='OBJECT')
     
-    # Apply bone transforms if available
-    if hasattr(gfmodel, 'transformmatrix'):
-        for bone_idx, gfbone in enumerate(gfmodel.GFBones):
-            bone_name = f"Bone_{bone_idx}"
-            if hasattr(gfbone, 'name') and gfbone.name.strip('\x00'):
-                bone_name = gfbone.name.strip('\x00')
-            
-            # Create transformation matrix
-            if hasattr(gfbone, 'matrix') and gfbone.matrix:
-                mat = Matrix()
-                for i in range(4):
-                    for j in range(4):
-                        mat[i][j] = gfbone.matrix.matrix[i][j]
-                
-                # Apply matrix to pose bone
-                if bone_name in arm_obj.pose.bones:
-                    arm_obj.pose.bones[bone_name].matrix = mat
+
     
     return arm_obj
 

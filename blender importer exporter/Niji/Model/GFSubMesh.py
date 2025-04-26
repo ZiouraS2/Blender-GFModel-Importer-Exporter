@@ -15,7 +15,7 @@ class GFSubMeshPart1(object):
             self.boneindices = []
             #bone indices count but 31 fixed length anyway???? lol?
             for x in range(31):
-                self.boneindices.append(file.read(1))
+                self.boneindices.append(int.from_bytes(file.read(1),"little"))
             self.verticescount = int.from_bytes(file.read(4),"little")
             self.indicescount = int.from_bytes(file.read(4),"little")
             self.verticeslength = int.from_bytes(file.read(4),"little")

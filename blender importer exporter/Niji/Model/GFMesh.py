@@ -103,6 +103,9 @@ class GFMesh(object):
         i2 = 0
         for x in range(attributestotal):
             #fixed attributes
+            print("attributes")
+            print(i2)
+            print(((bufferformats >> (48+i2)) & 1))
             if(((bufferformats >> (48+i2)) & 1) != 0):
                 scale = 1
                 name = PicaAttributeName.PicaAttributeName((bufferpermutation >>(i2*4))&0xf).name
@@ -110,8 +113,11 @@ class GFMesh(object):
                 if(name == "Color"):
                     scale = 3
                 if(name == "BoneWeight"):
-                    scale = 0.007874016
-                submesh.fixedattributes.append(PicaFixedAttribute.PicaFixedAttribute(picaname,fixed[i2].mul(scale)))
+                    scale = 0.007874016          
+                fixed[i2].mul(scale)
+                print("fixed")
+                print(fixed[i2])
+                submesh.fixedattributes.append(PicaFixedAttribute.PicaFixedAttribute(picaname,fixed[i2]))
             #attributes
             else:
                 permutationidx = ((bufferattributes >> i2*4) & 0xf)
