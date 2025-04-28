@@ -10,8 +10,8 @@ from mathutils import Vector, Matrix, Euler
 
 # Import the Niji library
 # Module is now local to addon
-from .Niji.Model.GFModel import GFModel
-from .Niji.Model.PicaCommandReader import PicaCommandReader
+from Niji.Model.GFModel import GFModel
+from Niji.Model.PicaCommandReader import PicaCommandReader
 
 def load_gfmdl(filepath, import_bones=True, import_materials=True):
     print(f"Loading GFMDL file: {filepath}")
@@ -50,7 +50,7 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
             # Process each submesh
             for submesh_idx, submesh in enumerate(gfmesh.GFSubMeshes.GFSubMeshes):
                 # Get the attributes for the submesh
-                gfmesh.getfixedattributes(submesh)
+                gfmesh.getfixedattributes(submesh,submesh_idx)
                 
                 # Extract vertex data
                 vertices, normals, uvs, colors, bone_weights, bone_indices = extract_vertex_data(submesh)
@@ -76,6 +76,7 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                     # In Blender 4.3, simply set the normals directly
                     me.normals_split_custom_set_from_vertices(normals)
                 
+                print(submesh_name)
                 # Add UVs if available
                 if uvs:
                     me.uv_layers.new(name="UVMap")
@@ -174,6 +175,7 @@ def extract_vertex_data(submesh):
     fixedattributes = submesh.fixedattributes
     vertexstride = submesh.vertexstride
     verticeslength = submesh.gfsubmeshpart1.verticeslength
+    submesh_name2 = submesh.gfsubmeshpart1.submeshname.strip('\x00')
     
     # Calculate how many vertices we have
     num_vertices = int(verticeslength / vertexstride)
@@ -198,6 +200,8 @@ def extract_vertex_data(submesh):
         }
         
         # Read all attributes for this vertex
+        if v_idx < 10 and submesh_name2 == "f0102_hillplant01":
+            print(attributes)
         for attr in attributes:
             attr_name = attr.name.name.lower()
             elements = []
@@ -236,6 +240,10 @@ def extract_vertex_data(submesh):
         # Add normal if available
         if vertex_data['normal']:
             nx, ny, nz = vertex_data['normal'][:3]
+            if v_idx < 10 and submesh_name2 == "f0102_hillplant01":
+                print(nx)
+                print(ny)
+                print(nz)
             normals.append(Vector((nx, ny, nz)).normalized())
         
         # Add UV if available
@@ -260,7 +268,9 @@ def extract_vertex_data(submesh):
             #each access to this array will have another array with a list of bone indexes(aka elements[])
             #print(vertex_data['boneindex'])
             bone_indices.append(vertex_data['boneindex'])
-            
+        
+        if v_idx < 10 and submesh_name2 == "f0102_hillplant01":
+            print()
     # add attributes from fixed attributes:
     for fixattr in fixedattributes:
         fixattrname = fixattr.name.name.lower()

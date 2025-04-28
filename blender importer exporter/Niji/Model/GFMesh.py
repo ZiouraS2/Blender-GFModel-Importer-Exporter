@@ -49,7 +49,7 @@ class GFMesh(object):
         #no looping here because it makes it easier to digest
         self.GFSubMeshes = GFSubMesh.GFSubMeshes(file,self.submeshescount)
     
-    def getfixedattributes(self,submesh):
+    def getfixedattributes(self,submesh,submesh_index):
         scales = np.array([0.007874016,0.003921569,3.051851E-05,1])
         fixedattributetable = []
         
@@ -64,8 +64,8 @@ class GFMesh(object):
             tempVec = PicaFloatVector24.PicaVectorFloat24()
             fixed.append(tempVec)
         
-        enablecommands = self.GFMeshCommandses[0].commands
-    
+        enablecommands = self.GFMeshCommandses[0+(3*submesh_index)].commands
+        print(enablecommands)
         picacommands = PicaCommandReader.PicaCommandReader(enablecommands)
         
         #get parameters we need from commands
@@ -74,8 +74,11 @@ class GFMesh(object):
             currcommand = picacommands.commands[i]
             if(currcommand.register.name == "GPUREG_ATTRIBBUFFERS_FORMAT_LOW"):
                 bufferformats |= currcommand.parameters[0] << 0
+                print(bufferformats)
             if(currcommand.register.name == "GPUREG_ATTRIBBUFFERS_FORMAT_HIGH"):
                 bufferformats |= currcommand.parameters[0] << 32
+                print("bufferformats")
+                print(bufferformats)
             if(currcommand.register.name == "GPUREG_ATTRIBBUFFER0_CONFIG1"):
                 bufferattributes |= currcommand.parameters[0]
             if(currcommand.register.name == "GPUREG_ATTRIBBUFFER0_CONFIG2"):
@@ -103,20 +106,20 @@ class GFMesh(object):
         i2 = 0
         for x in range(attributestotal):
             #fixed attributes
+            print(submesh.gfsubmeshpart1.submeshname)
             print("attributes")
             print(i2)
             print(((bufferformats >> (48+i2)) & 1))
             if(((bufferformats >> (48+i2)) & 1) != 0):
                 scale = 1
                 name = PicaAttributeName.PicaAttributeName((bufferpermutation >>(i2*4))&0xf).name
+                print(name)
                 picaname =  PicaAttributeName.PicaAttributeName((bufferpermutation >>(i2*4))&0xf)
                 if(name == "Color"):
                     scale = 3
                 if(name == "BoneWeight"):
                     scale = 0.007874016          
                 fixed[i2].mul(scale)
-                print("fixed")
-                print(fixed[i2])
                 submesh.fixedattributes.append(PicaFixedAttribute.PicaFixedAttribute(picaname,fixed[i2]))
             #attributes
             else:
@@ -124,10 +127,13 @@ class GFMesh(object):
                 attributename = ((bufferpermutation >> permutationidx*4) & 0xf)
                 attributefmt = ((bufferformats >> permutationidx*4) & 0xf)
                 attrib = PicaAttribute.PicaAttribute(PicaAttributeName.PicaAttributeName(attributename),PicaAttributeFormat.PicaAttributeFormat(attributefmt&3),(attributefmt >> 2)+1,scales[attributefmt & 3])
+                print(attrib.name)
                 if(attrib.name == "BoneIndex"):
                     attrib.scale = 1
                     
+                
                 submesh.attributes.append(attrib)
+            print()
             i2 += 1
             
                 
