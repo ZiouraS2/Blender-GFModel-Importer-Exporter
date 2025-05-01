@@ -68,10 +68,10 @@ class GFMaterial(object):
         self.shaderparam2 = struct.unpack('f',file.read(4))
         self.shaderparam3 = struct.unpack('f',file.read(4))
         self.unitscount = int.from_bytes(file.read(4),"little")
-        coords = []
+        self.coords = []
         for x in range(self.unitscount):
             tempGFTexCoord = GFTextureCoord.GFTextureCoord(file)
-            coords.append(tempGFTexCoord)
+            self.coords.append(tempGFTexCoord)
         helperfunctions.skippadding3(file)
         self.commandslength = int.from_bytes(file.read(4),"little")
         self.renderpriority = int.from_bytes(file.read(4),"little")
@@ -85,3 +85,5 @@ class GFMaterial(object):
         for x in range(self.commandslength >> 2):
             self.picacommands.append(file.read(4))
         helperfunctions.skippadding1(16,file)
+        
+        

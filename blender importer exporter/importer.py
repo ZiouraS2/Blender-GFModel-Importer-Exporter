@@ -10,8 +10,8 @@ from mathutils import Vector, Matrix, Euler
 
 # Import the Niji library
 # Module is now local to addon
-from Niji.Model.GFModel import GFModel
-from Niji.Model.PicaCommandReader import PicaCommandReader
+from .Niji.Model.GFModel import GFModel
+from .Niji.Model.PicaCommandReader import PicaCommandReader
 
 def load_gfmdl(filepath, import_bones=True, import_materials=True):
     print(f"Loading GFMDL file: {filepath}")
@@ -36,10 +36,8 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
         if import_bones and gfmodel.bonescount > 0:
             armature = create_armature(gfmodel, model_name)
         
-        # Import materials if enabled
-        materials = {}
-        if import_materials and len(gfmodel.GFMaterials) > 0:
-            materials = create_materials(gfmodel)
+        #import possible textures in model directory automatically
+        import_textures(gfmodel,filepath)
         
         # Process each mesh in the model
         for mesh_idx, gfmesh in enumerate(gfmodel.GFMeshes):
@@ -95,12 +93,8 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 
 
                 # commenting out because material export will be a bit more complicated than this
-                
-                #if materials and mesh_idx < len(gfmodel.GFMeshes):
-                    #if mesh_idx < len(gfmodel.GFMaterials):
-                        #mat = materials.get(mesh_idx)
-                        #if mat:
-                            #me.materials.append(mat)
+                            
+                me.materials.append(create_material(gfmodel,me))
                 
                 
                 # Add armature modifier if we have bones
@@ -200,8 +194,7 @@ def extract_vertex_data(submesh):
         }
         
         # Read all attributes for this vertex
-        if v_idx < 10 and submesh_name2 == "f0102_hillplant01":
-            print(attributes)
+ 
         for attr in attributes:
             attr_name = attr.name.name.lower()
             elements = []
@@ -240,10 +233,6 @@ def extract_vertex_data(submesh):
         # Add normal if available
         if vertex_data['normal']:
             nx, ny, nz = vertex_data['normal'][:3]
-            if v_idx < 10 and submesh_name2 == "f0102_hillplant01":
-                print(nx)
-                print(ny)
-                print(nz)
             normals.append(Vector((nx, ny, nz)).normalized())
         
         # Add UV if available
@@ -268,15 +257,13 @@ def extract_vertex_data(submesh):
             #each access to this array will have another array with a list of bone indexes(aka elements[])
             #print(vertex_data['boneindex'])
             bone_indices.append(vertex_data['boneindex'])
-        
-        if v_idx < 10 and submesh_name2 == "f0102_hillplant01":
-            print()
+
     # add attributes from fixed attributes:
     for fixattr in fixedattributes:
         fixattrname = fixattr.name.name.lower()
-        print("fixedattrbute")
-        print(fixattrname)
-        print(fixattr.value)
+        #print("fixedattrbute")
+        #print(fixattrname)
+        #print(fixattr.value)
         values = np.array([fixattr.value.X,fixattr.value.Y,fixattr.value.Z,fixattr.value.W])
         temparray = np.vstack((values,)*num_vertices)
         if (fixattrname == "boneweight"):
@@ -381,37 +368,119 @@ def create_armature(gfmodel, model_name):
 
     
     return arm_obj
+#thank you stack overflow
+def path_iterator(folder_path):
+    for fp in os.listdir(folder_path):
+        if fp.endswith( tuple( bpy.path.extensions_image ) ):
+            yield fp
 
-def create_materials(gfmodel):
-    materials = {}
-    
-    for mat_idx, gfmaterial in enumerate(gfmodel.GFMaterials):
-        mat_name = f"Material_{mat_idx}"
-        if hasattr(gfmaterial, 'name') and gfmaterial.name.strip('\x00'):
-            mat_name = gfmaterial.name.strip('\x00')
+def import_textures(gfmodel,filepath):
+    for imgPath in path_iterator(filepath.rsplit('\\', 1)[0]):
+        print("textureinfolder")
+        print(imgPath)
+        fullPath = os.path.join( filepath.rsplit('\\', 1)[0], imgPath )
+        bpy.ops.image.open( filepath = fullPath )
+
+def create_material(gfmodel,mesh):
+        meshname = mesh.name.split('.')
+        print(meshname[0])
+        for x in range(len(gfmodel.GFMaterials)):
+            print(gfmodel.GFMaterials[x].materialname.hashes[0][1])
+            if(gfmodel.GFMaterials[x].materialname.hashes[0][1] == meshname[0]):
+                gfmaterial = gfmodel.GFMaterials[x]
+        
+        if hasattr(gfmaterial, 'materialname'):
+            mat_name = gfmaterial.materialname.hashes[0][1].strip('\x00')
         
         # Create new material
         mat = bpy.data.materials.new(name=mat_name)
         mat.use_nodes = True
+        #add bsdf
         bsdf = mat.node_tree.nodes["Principled BSDF"]
+        bsdf.location[0] = bsdf.location[0] + (1600.0)
         
-        # Add texture if available
-        if hasattr(gfmaterial, 'textures') and gfmaterial.textures:
-            for tex_idx, texture in enumerate(gfmaterial.textures):
-                if tex_idx == 0 and texture:  # Just use the first texture for now
-                    # Create texture node
-                    tex_image = mat.node_tree.nodes.new('ShaderNodeTexImage')
+        # Add texture if we have texcoord data in the materials
+        if gfmaterial.unitscount > 0:
+            for texindex, texcoord in enumerate(gfmaterial.coords):
+                # Create texture node
+                tex_image = mat.node_tree.nodes.new('ShaderNodeTexImage')
+                    
+                if(texcoord.wrapu.name == "ClampToEdge" or "ClampToBorder"):
+                    tex_image.extension = 'CLIP'
+                if(texcoord.wrapu.name == "Repeat"):
+                    tex_image.extension = "REPEAT"
+                if(texcoord.wrapu.name == "Mirror"):
+                    tex_image.extension = "MIRROR"
+                imagedatablock = bpy.data.images.get(texcoord.texturename.hashes[0][1])
+                if(imagedatablock is None):
                     tex_image.image = bpy.data.images.new(
-                        name=f"{mat_name}_Tex", 
+                        name= texcoord.texturename.hashes[0][1], 
                         width=256, 
                         height=256
                     )
-                    # Connect texture to material
-                    mat.node_tree.links.new(
-                        tex_image.outputs['Color'],
-                        bsdf.inputs['Base Color']
-                    )
-        
-        materials[mat_idx] = mat
-    
-    return materials 
+                else:
+                    tex_image.image = imagedatablock
+                
+                
+                tex_image.location[0] = tex_image.location[0] + 700.0
+                tex_image.location[1] = tex_image.location[1] + (300.0*texindex)
+                
+                texcoordnode = mat.node_tree.nodes.new('ShaderNodeTexCoord')
+                
+                texcoordnode.location[0] = texcoordnode.location[0] + 200.0
+                texcoordnode.location[1] = texcoordnode.location[1] + (300.0*texindex)
+                
+                mapnode = mat.node_tree.nodes.new('ShaderNodeMapping')
+                
+                mapnode.location[0] = mapnode.location[0] + 500.0
+                mapnode.location[1] = mapnode.location[1] + (300.0*texindex)
+                
+                #probably inaccurate? idk really
+                mapnode.inputs['Rotation'].default_value[0] = math.radians(texcoord.rotation[0])
+                
+                mapnode.inputs['Location'].default_value[0]  = texcoord.translation.X
+                mapnode.inputs['Location'].default_value[1]  = texcoord.translation.Y
+                
+                print("scales")
+                print(texcoord.scale.X)
+                print(texcoord.scale.Y)
+                mapnode.inputs['Scale'].default_value[0] = texcoord.scale.X
+                mapnode.inputs['Scale'].default_value[1] = texcoord.scale.Y
+                #link tex coord to mapping
+                mat.node_tree.links.new(texcoordnode.outputs[2],mapnode.inputs[0])
+                
+                if ("Col" in mesh.vertex_colors):
+                    #add color attribute node
+                    colorattribnode = mat.node_tree.nodes.new('ShaderNodeVertexColor')
+                    colorattribnode.layer_name = "Col"
+                    
+                    colorattribnode.location[0] = colorattribnode.location[0] - 200.0
+                    colorattribnode.location[1] = colorattribnode.location[1] + (300.0*texindex)
+                
+                    #link mapping to texture node
+                    mat.node_tree.links.new(mapnode.outputs['Vector'],tex_image.inputs['Vector'])
+                    #add mix node for vertex colors
+                    mixrgbnode = mat.node_tree.nodes.new('ShaderNodeMixRGB')
+                    mixrgbnode.inputs[0].default_value = 0.06
+                    
+                    mixrgbnode.location[0] = mixrgbnode.location[0] + 1200.0
+                    mixrgbnode.location[1] = mixrgbnode.location[1] + (300.0*texindex)
+                    
+                    #mix colors
+                    if texindex == 0:
+                        mat.node_tree.links.new(
+                            tex_image.outputs['Color'],
+                            mixrgbnode.inputs[1]
+                        )
+                        mat.node_tree.links.new(colorattribnode.outputs['Color'],mixrgbnode.inputs[2])
+                        
+                        #send mix shader to bsdf
+                        mat.node_tree.links.new(mixrgbnode.outputs[0],bsdf.inputs['Base Color'])
+                else:
+                    #link mapping to texture node
+                    mat.node_tree.links.new(mapnode.outputs['Vector'],tex_image.inputs['Vector'])
+                    if texindex == 0:
+                        #send image to bsdf
+                        mat.node_tree.links.new(tex_image.outputs[0],bsdf.inputs['Base Color'])
+                    
+            return mat

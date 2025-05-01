@@ -10,5 +10,5 @@ class Vector2(object):
         self.X = 0
         self.Y = 0
 		
-        X = struct.unpack('f',file.read(4))
-        Y = struct.unpack('f',file.read(4))
+        self.X = struct.unpack('f',file.read(4))[0]
+        self.Y = struct.unpack('f',file.read(4))[0]
