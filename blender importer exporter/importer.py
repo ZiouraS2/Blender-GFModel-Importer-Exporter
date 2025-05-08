@@ -10,8 +10,8 @@ from mathutils import Vector, Matrix, Euler
 
 # Import the Niji library
 # Module is now local to addon
-from .Niji.Model.GFModel import GFModel
-from .Niji.Model.PicaCommandReader import PicaCommandReader
+from Niji.Model.GFModel import GFModel
+from Niji.Model.PicaCommandReader import PicaCommandReader
 
 def load_gfmdl(filepath, import_bones=True, import_materials=True):
     print(f"Loading GFMDL file: {filepath}")
@@ -51,7 +51,7 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 gfmesh.getfixedattributes(submesh,submesh_idx)
                 
                 # Extract vertex data
-                vertices, normals, uvs, colors, bone_weights, bone_indices = extract_vertex_data(submesh)
+                vertices, normals, uvs, colors, bone_weights, bone_indices, uvs1, uvs2 = extract_vertex_data(submesh)
                 
                 # Extract face indices
                 faces = extract_face_indices(submesh)
@@ -77,9 +77,21 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 print(submesh_name)
                 # Add UVs if available
                 if uvs:
-                    me.uv_layers.new(name="UVMap")
+                    me.uv_layers.new(name="UVMap0")
+                    if uvs1:
+                        print("uv1")
+                        print(len(uvs1))
+                        me.uv_layers.new(name="UVMap1")
+                    if uvs2:
+                        print("uv2")
+                        print(len(uvs2))
+                        me.uv_layers.new(name="UVMap2")
                     for i, loop in enumerate(me.loops):
                         me.uv_layers[0].data[i].uv = uvs[loop.vertex_index]
+                        if uvs1:
+                            me.uv_layers[1].data[i].uv = uvs1[loop.vertex_index]
+                        if uvs2:
+                            me.uv_layers[2].data[i].uv = uvs2[loop.vertex_index]
                 
                 # Add vertex colors if available
                 if colors:
@@ -159,6 +171,8 @@ def extract_vertex_data(submesh):
     vertices = []
     normals = []
     uvs = []
+    uvs1 = []
+    uvs2 = []
     colors = []
     bone_weights = []
     bone_indices = []
@@ -239,6 +253,14 @@ def extract_vertex_data(submesh):
         if vertex_data['texcoord0']:
             u, v = vertex_data['texcoord0'][:2]
             uvs.append((u, v))  # Flip Y-coordinate for Blender # Seems to actually be incorrect this way, reverting change
+            
+        if vertex_data['texcoord1']:
+            u, v = vertex_data['texcoord1'][:2]
+            uvs1.append((u, v))  
+            
+        if vertex_data['texcoord2']:
+            u, v = vertex_data['texcoord2'][:2]
+            uvs2.append((u, v))  
         
         # Add color if available
         if vertex_data['color']:
@@ -264,14 +286,29 @@ def extract_vertex_data(submesh):
         #print("fixedattrbute")
         #print(fixattrname)
         #print(fixattr.value)
-        values = np.array([fixattr.value.X,fixattr.value.Y,fixattr.value.Z,fixattr.value.W])
-        temparray = np.vstack((values,)*num_vertices)
+        
         if (fixattrname == "boneweight"):
+            values = np.array([fixattr.value.X,fixattr.value.Y,fixattr.value.Z,fixattr.value.W])
+            temparray = np.vstack((values,)*num_vertices)
             bone_weights = temparray.tolist()
         if (fixattrname == "boneindex"):
+            values = np.array([fixattr.value.X,fixattr.value.Y,fixattr.value.Z,fixattr.value.W])
+            temparray = np.vstack((values,)*num_vertices)
             bone_indices = temparray.tolist()
+        if (fixattrname == "texcoord0"):
+            values = np.array([fixattr.value.X,fixattr.value.Y])
+            temparray = np.vstack((values,)*num_vertices)
+            uvs = temparray.tolist()
+        if (fixattrname == "texcoord1"):
+            values = np.array([fixattr.value.X,fixattr.value.Y])
+            temparray = np.vstack((values,)*num_vertices)
+            uvs1 = temparray.tolist()
+        if (fixattrname == "texcoord2"):
+            values = np.array([fixattr.value.X,fixattr.value.Y])
+            temparray = np.vstack((values,)*num_vertices)
+            uvs2 = temparray.tolist()
     
-    return vertices, normals, uvs, colors, bone_weights, bone_indices
+    return vertices, normals, uvs, colors, bone_weights, bone_indices, uvs1, uvs2
 
 def extract_face_indices(submesh):
 
@@ -395,6 +432,9 @@ def create_material(gfmodel,mesh):
         # Create new material
         mat = bpy.data.materials.new(name=mat_name)
         mat.use_nodes = True
+        mat.blend_method = 'CLIP' 
+        mat.alpha_threshold = 0.01
+        #mat.location[0] = mat.location[0] + (1800.0)
         #add bsdf
         bsdf = mat.node_tree.nodes["Principled BSDF"]
         bsdf.location[0] = bsdf.location[0] + (1600.0)
@@ -425,11 +465,28 @@ def create_material(gfmodel,mesh):
                 tex_image.location[0] = tex_image.location[0] + 700.0
                 tex_image.location[1] = tex_image.location[1] + (300.0*texindex)
                 
-                texcoordnode = mat.node_tree.nodes.new('ShaderNodeTexCoord')
+                uvs = texcoord.mappingtype.name == "UvCoordinateMap"
                 
-                texcoordnode.location[0] = texcoordnode.location[0] + 200.0
-                texcoordnode.location[1] = texcoordnode.location[1] + (300.0*texindex)
+                if(uvs):
+                    uvmapnode = mat.node_tree.nodes.new('ShaderNodeUVMap')
+                    uvmapnode.uv_map = "UVMap"+str(texcoord.unitindex)
+                    
+                    uvmapnode.location[0] = uvmapnode.location[0] + 200.0
+                    uvmapnode.location[1] = uvmapnode.location[1] + (300.0*texindex)
                 
+                
+                #if mapping type is not based on uvs
+                nodelocation = 0
+                if(not uvs):
+                    texcoordnode = mat.node_tree.nodes.new('ShaderNodeTexCoord')
+                
+                    texcoordnode.location[0] = texcoordnode.location[0] + 200.0
+                    texcoordnode.location[1] = texcoordnode.location[1] + (300.0*texindex)
+                    
+                    if texcoord.mappingtype.name == "CameraCubeEnvMap" or "CameraSphereEnvMap":
+                        nodelocation = 6
+                    if texcoord.mappingtype.name == "ProjectionMap":
+                        nodelocation = 5
                 mapnode = mat.node_tree.nodes.new('ShaderNodeMapping')
                 
                 mapnode.location[0] = mapnode.location[0] + 500.0
@@ -438,8 +495,9 @@ def create_material(gfmodel,mesh):
                 #probably inaccurate? idk really
                 mapnode.inputs['Rotation'].default_value[0] = math.radians(texcoord.rotation[0])
                 
-                mapnode.inputs['Location'].default_value[0]  = texcoord.translation.X
-                mapnode.inputs['Location'].default_value[1]  = texcoord.translation.Y
+                # i love blender so-f-df-s-s-f- much!
+                mapnode.inputs['Location'].default_value[0]  = texcoord.translation.X*2.0
+                mapnode.inputs['Location'].default_value[1]  = texcoord.translation.Y*2.0
                 
                 print("scales")
                 print(texcoord.scale.X)
@@ -447,7 +505,11 @@ def create_material(gfmodel,mesh):
                 mapnode.inputs['Scale'].default_value[0] = texcoord.scale.X
                 mapnode.inputs['Scale'].default_value[1] = texcoord.scale.Y
                 #link tex coord to mapping
-                mat.node_tree.links.new(texcoordnode.outputs[2],mapnode.inputs[0])
+                
+                if(uvs):
+                    mat.node_tree.links.new(uvmapnode.outputs[0],mapnode.inputs[0])
+                else:
+                    mat.node_tree.links.new(texcoordnode.outputs[nodelocation],mapnode.inputs[0])
                 
                 if ("Col" in mesh.vertex_colors):
                     #add color attribute node
@@ -461,7 +523,8 @@ def create_material(gfmodel,mesh):
                     mat.node_tree.links.new(mapnode.outputs['Vector'],tex_image.inputs['Vector'])
                     #add mix node for vertex colors
                     mixrgbnode = mat.node_tree.nodes.new('ShaderNodeMixRGB')
-                    mixrgbnode.inputs[0].default_value = 0.06
+                    mixrgbnode.inputs[0].default_value = 1.00
+                    mixrgbnode.blend_type = "MULTIPLY"
                     
                     mixrgbnode.location[0] = mixrgbnode.location[0] + 1200.0
                     mixrgbnode.location[1] = mixrgbnode.location[1] + (300.0*texindex)
@@ -472,6 +535,10 @@ def create_material(gfmodel,mesh):
                             tex_image.outputs['Color'],
                             mixrgbnode.inputs[1]
                         )
+                        mat.node_tree.links.new(
+                            tex_image.outputs['Alpha'],
+                            bsdf.inputs['Alpha']
+                        )
                         mat.node_tree.links.new(colorattribnode.outputs['Color'],mixrgbnode.inputs[2])
                         
                         #send mix shader to bsdf
@@ -481,6 +548,10 @@ def create_material(gfmodel,mesh):
                     mat.node_tree.links.new(mapnode.outputs['Vector'],tex_image.inputs['Vector'])
                     if texindex == 0:
                         #send image to bsdf
+                        mat.node_tree.links.new(
+                            tex_image.outputs['Alpha'],
+                            bsdf.inputs['Alpha']
+                        )
                         mat.node_tree.links.new(tex_image.outputs[0],bsdf.inputs['Base Color'])
                     
             return mat

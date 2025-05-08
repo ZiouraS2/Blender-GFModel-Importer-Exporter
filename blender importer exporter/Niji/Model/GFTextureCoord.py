@@ -7,13 +7,14 @@ from . import GFHashName2
 from . import GFTextureWrap
 from . import GFMagFilter
 from . import GFMinFilter
+from . import GFTextureMappingType
 
 class GFTextureCoord(object):         
 
     def readGFTextureCoord(self,file):
         self.texturename = GFHashName2.GFHashName2(file)
         self.unitindex = int.from_bytes(file.read(1),"little")
-        self.mappingtype = int.from_bytes(file.read(1),"little")
+        self.mappingtype = GFTextureMappingType.GFTextureMappingType(int.from_bytes(file.read(1),"little"))
         self.scale = Vector2.Vector2(file)
         print("textue coord reads")
         print(self.texturename.hashes[0][1])

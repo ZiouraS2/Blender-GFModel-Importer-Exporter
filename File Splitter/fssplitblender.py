@@ -1,7 +1,7 @@
 import os
 import sys
 
-filecount = -1
+filecount = 0
 filestodelete = []
 currentfirstlevelfile = 0
 
@@ -10,19 +10,17 @@ def LoadFS(file,arr,offset,parent,recursion):
     global filecount
     global filestodelete
     global currentfirstlevelfile
-    #print("offset:")
-    #print(offset) 
-    #print("filecount:")
-    #print(filecount)
     initfilecount = filecount
     file.seek(offset)
     magic1 = file.read(1).decode("utf-8");
     magic2 = file.read(1).decode("utf-8");     
     numofoffsets = int.from_bytes(file.read(2),"little")
-    #print(numofoffsets)
-    #print(magic1)
-    #print(magic2)
-    #print(offset)
+    if(filecount < 98):
+        print("number of offsets in thing")
+        print(numofoffsets)
+        print("absolute offset")
+        print(offset)
+
     offsets = [None]*(numofoffsets+1)
     #allfound = False
         
@@ -32,7 +30,6 @@ def LoadFS(file,arr,offset,parent,recursion):
     
     for number in range(numofoffsets):    
         #magic /folder
-        filecount = filecount + 1
         arr.append([])
         
         #get parent path[0]
@@ -48,9 +45,18 @@ def LoadFS(file,arr,offset,parent,recursion):
         arr[filecount].append(number)
         
         #where to start reading[2]
-        #if(filecount < 98):
-            #print(offsets[number])
-            #print(int.from_bytes(offsets[number],"little")+offset)
+        if(filecount < 98):
+            print("------------------")
+            print("byte offset")
+            print(offsets[number])
+            print("index")
+            print(number)
+            print("index to be read")
+            print(int.from_bytes(offsets[number],"little")+offset)
+            print("path")
+            print(arr[filecount][0])
+            print("------------------")
+
         arr[filecount].append(int.from_bytes(offsets[number],"little")+offset)
         #if(filecount < 98):
             #print(filecount)
@@ -61,6 +67,7 @@ def LoadFS(file,arr,offset,parent,recursion):
         arr[filecount].append(int.from_bytes(offsets[number + 1],"little") - int.from_bytes(offsets[number],"little"))
         
         #print("filecount:")
+        filecount = filecount + 1
     
     print(arr[0][2])
     
@@ -68,62 +75,59 @@ def LoadFS(file,arr,offset,parent,recursion):
     
      
     #if we find subfolders
- 
-    if recursion < 1:
-        for number in range(numofoffsets):
-            #print("offset recursion:")
-            #print(arr[number][2])
-            file.seek(arr[number][2])
-            testfile1 = int.from_bytes(file.read(1),"little");
-            testfile2 = int.from_bytes(file.read(1),"little");  
+    offset = recursion > 1
+    offset2 = 0
+    if offset:
+        offset2 = 1
 
-                
-            if((testfile1 < 41 or testfile1 > 133) and (testfile2 < 41 or testfile2 > 133)):
-                print("subfolder not found")
-            else:         
-                #if(filecount < 98):
-                    #print("recursion path")
-                    #print(arr[number][0])
-                    #print(arr[number][2])
-                print()
-                recursion = recursion + 1
-                LoadFS(file,arr,arr[number][2],arr[number][0],recursion)
-                
-                #if we find a subfolder, we need to remove the original "file" we found it in
-                #marking for deletion insead of actually deleting rn
-                filestodelete.append(number)
-
-                #filecount = filecount - 1
-                
-                print("filecount ")
-                print(filecount)
-            currentfirstlevelfile = currentfirstlevelfile + 1
-                
         
-    else:
-        for number in range(numofoffsets):
-            print("offset recursion > 1:")
-            print(initfilecount)
-            print(arr[initfilecount+number][2])
-            file.seek(arr[initfilecount+number][2])
-            testfile1 = int.from_bytes(file.read(1),"little");
-            testfile2 = int.from_bytes(file.read(1),"little");  
-                
-            if((testfile1 < 41 or testfile1 > 133) and (testfile2 < 41 or testfile2 > 133)):
-                print("subfolder not found")
-            else:                    
-                              
-                LoadFS(file,arr,arr[initfilecount+number][2],arr[initfilecount+number][0],recursion)
-                
-                #if we find a subfolder, we need to remove the original "file" we found it in
-                #marking for deletion insead of actually deleting rn
-                filestodelete.append(number)
+    for number in range(numofoffsets):
+        print("offset recursion > 1:")
+        print("number in offset list")
+        print(initfilecount+number)
+        print("looking at offset")
+        print(arr[initfilecount+number][2])
+        print("offset length")
+        print(arr[initfilecount+number][3])
+        file.seek(arr[initfilecount+number][2])
+        testfile1 = int.from_bytes(file.read(1),"little");
+        testfile2 = int.from_bytes(file.read(1),"little");  
+        currentfirstlevelfile = number
+        print("currentfirstlevelfile")
+        print(currentfirstlevelfile)
+        if filecount < 98:
+            print("testfilenumbers")
+            print(testfile1)
+            print(testfile2)
+            #check if it's inbetween range and if the offsets actually have any length
+        if((testfile1 < 65 or testfile1 > 90) or (testfile2 < 65 or testfile2 > 90) or (arr[initfilecount+number][3] == 0)):
+            print("subfolder not found")
+            print()
+            print()
+            recursion = recursion + 1
+        else:                    
+            print("subfolder found")
+            print()
+            print()
+            
+            recursion = recursion + 1
+            #marking for deletion insead of actually deleting rn
+            filestodelete.append(initfilecount+number)
+            LoadFS(file,arr,arr[initfilecount+number][2],arr[initfilecount+number][0],recursion)  
+            #if we find a subfolder, we need to remove the original "file" we found it in
+            
 
-                #filecount = filecount - 1
+            #filecount = filecount - 1
                 
-                print("filecount ")
-                print(filecount)
-                    
+            print("file being deleted")
+            print(arr[initfilecount+number][0])
+            print("exiting recursion for: ")
+            print(number)
+            print(arr[initfilecount+number][0])
+            print()
+            print()
+        
+            
         #allfound = (count >= (numoffsets - 1))
             
     
@@ -137,14 +141,14 @@ def MakeDirs(MasterList,file):
                 count2 = count2 + 1
                 
             try:
-                os.mkdir(directory_name)
+                os.makedirs(directory_name)
                 print(f"Directory '{directory_name}' created successfully.")
             except FileExistsError:
                 print(f"Directory '{directory_name}' already exists.")
             except PermissionError:
                 print(f"Permission denied: Unable to create '{directory_name}'.")
             except Exception as e:
-                print(f"An error occurred: {e}")
+                print(f"An error occurre: {e}"+"...")
                 
             filetype = checkFileType(MasterList[count][2],file).rstrip('\x00')
             print(filetype)
@@ -243,12 +247,13 @@ def checkFileType(offset,file):
                         
 def DeleteExtras(listofindexes,masterlist):
     offset = 0
-    for x in listofindexes:
+    for x in sorted(listofindexes, reverse=True):
         print("x")
         print(x)
-        masterlist.pop(x-offset)
+        masterlist.pop(x)
         #offset is needed because when you remove something from the list, the position of the next index will decrease
         offset = offset + 1
+        print(offset)
 
 
 
