@@ -92,6 +92,7 @@ def LoadFS(file,arr,offset,parent,recursion):
         file.seek(arr[initfilecount+number][2])
         testfile1 = int.from_bytes(file.read(1),"little");
         testfile2 = int.from_bytes(file.read(1),"little");  
+        testnumofoffsets = int.from_bytes(file.read(2),"little")
         currentfirstlevelfile = number
         print("currentfirstlevelfile")
         print(currentfirstlevelfile)
@@ -99,8 +100,8 @@ def LoadFS(file,arr,offset,parent,recursion):
             print("testfilenumbers")
             print(testfile1)
             print(testfile2)
-            #check if it's inbetween range and if the offsets actually have any length
-        if((testfile1 < 65 or testfile1 > 90) or (testfile2 < 65 or testfile2 > 90) or (arr[initfilecount+number][3] == 0)):
+            #check if it's inbetween range and if the offsets actually have any length. also if it has a valid offset length(it can't be more than 0x1C because it only takes up so much space)
+        if((testfile1 < 65 or testfile1 > 90) or (testfile2 < 65 or testfile2 > 90) or (arr[initfilecount+number][3] == 0) or (testnumofoffsets > 31)):
             print("subfolder not found")
             print()
             print()
@@ -203,9 +204,10 @@ def checkFileType(offset,file):
     magic = "bin"
     file.seek(offset)
     print(file.tell())
-
+    bytedata0 = file.read(8)
     file.seek(offset+16)
     bytedata = file.read(8)
+    print(bytedata)
     
     #is it a shader?
     if(bytedata == b'\x73\x68\x61\x64\x65\x72\x00\x00'):
@@ -220,6 +222,14 @@ def checkFileType(offset,file):
         file.seek(offset)
         magic = "gfmodel"
         name = findFileNameGFModel(file)
+        magic = name+"."+magic
+        OverrideFileName = True
+    #is it a environment file?
+    if(bytedata0 == b'\x47\x46\x42\x45\x4E\x56\x00\x00'):
+        file.seek(offset+92)
+        bytedata2 = file.read(12)
+        magic = "gfenv"
+        name = bytedata2.decode("utf-8").strip('\x00')
         magic = name+"."+magic
         OverrideFileName = True
         
@@ -239,6 +249,7 @@ def checkFileType(offset,file):
     bytedata5 = file.read(4)
     if(bytedata5 == b'\x00\x00\x06\x00'):
         magic = "gfanimation"
+    
     if OverrideFileName == True:
         return magic
     else:
