@@ -412,11 +412,26 @@ def path_iterator(folder_path):
             yield fp
 
 def import_textures(gfmodel,filepath):
+    indx = len(bpy.data.images)-1
     for imgPath in path_iterator(filepath.rsplit('\\', 1)[0]):
         print("textureinfolder")
         print(imgPath)
         fullPath = os.path.join( filepath.rsplit('\\', 1)[0], imgPath )
         bpy.ops.image.open( filepath = fullPath )
+        
+        img = bpy.data.images[imgPath]
+        print("imgname")
+        print(img.name)
+        if((len(img.name.rsplit('.', 1)) > 1)):
+            newname = img.name.rsplit('.', 1)[0]
+            ext = img.name.rsplit('.', 1)[1]
+            print(newname)
+            print(ext)
+            if((ext != "tga")and(len(newname) > 1)):
+                img.name = newname
+            
+
+        
 
 def create_material(gfmodel,mesh):
         meshname = mesh.name.split('.')
