@@ -7,6 +7,7 @@ from . import GFHashName
 from . import GFTextureCoord
 from . import GFHashName2
 from . import RGBA
+from . import PicaCommandReader
 
 
 class GFMaterial(object):         
@@ -83,7 +84,14 @@ class GFMaterial(object):
         self.reflectionidk = int.from_bytes(file.read(4),"little")
         self.picacommands = []
         for x in range(self.commandslength >> 2):
-            self.picacommands.append(file.read(4))
+            self.picacommands.append(int.from_bytes(file.read(4),"little"))
+        self.texturesources = []
+        commands = PicaCommandReader.PicaCommandReader(self.picacommands)
+        if(hasattr(commands,'vtxuniforms')):
+            self.texturesources.append(commands.vtxuniforms.uniforms[0][0])
+            self.texturesources.append(commands.vtxuniforms.uniforms[0][1])
+            self.texturesources.append(commands.vtxuniforms.uniforms[0][2])
+            self.texturesources.append(commands.vtxuniforms.uniforms[0][3])
         helperfunctions.skippadding1(16,file)
         
         

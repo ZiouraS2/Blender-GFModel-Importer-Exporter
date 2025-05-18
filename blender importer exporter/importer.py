@@ -10,8 +10,8 @@ from mathutils import Vector, Matrix, Euler
 
 # Import the Niji library
 # Module is now local to addon
-from Niji.Model.GFModel import GFModel
-from Niji.Model.PicaCommandReader import PicaCommandReader
+from .Niji.Model.GFModel import GFModel
+from .Niji.Model.PicaCommandReader import PicaCommandReader
 
 def load_gfmdl(filepath, import_bones=True, import_materials=True):
     print(f"Loading GFMDL file: {filepath}")
@@ -107,6 +107,8 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 # commenting out because material export will be a bit more complicated than this
                             
                 me.materials.append(create_material(gfmodel,me))
+                for f in me.polygons:
+                    f.use_smooth = True
                 
                 
                 # Add armature modifier if we have bones
@@ -151,6 +153,9 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                     print("no bone indicess")
                     print(submesh_name)
                 
+                #add each model to unique collection
+                
+                
                 created_objects.append(obj)
                 
         # Orient mesh properly
@@ -158,9 +163,21 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
         for o in obj:
             RotateObj(o, 90, 'X')
             
+        my_coll = bpy.data.collections.new(model_name)
+        bpy.context.scene.collection.children.link(my_coll)
         # Select all created objects
+    
+
         for obj in created_objects:
+            for other_col in obj.users_collection:
+                other_col.objects.unlink(obj)
+            my_coll.objects.link(obj)
             obj.select_set(True)
+        if armature:
+            for other_col in armature.users_collection:
+                other_col.objects.unlink(armature)
+            my_coll.objects.link(armature)
+            
         
         if created_objects:
             bpy.context.view_layer.objects.active = created_objects[0]
@@ -452,6 +469,12 @@ def create_material(gfmodel,mesh):
         #mat.location[0] = mat.location[0] + (1800.0)
         #add bsdf
         bsdf = mat.node_tree.nodes["Principled BSDF"]
+        
+        for i, o in enumerate(bsdf.inputs):
+            if(o.name == 'Specular' or o.name == 'Specular IOR Level'):
+                bsdf.inputs[i].default_value = 0.0
+                
+                
         bsdf.location[0] = bsdf.location[0] + (1600.0)
         
         # Add texture if we have texcoord data in the materials
@@ -483,8 +506,13 @@ def create_material(gfmodel,mesh):
                 uvs = texcoord.mappingtype.name == "UvCoordinateMap"
                 
                 if(uvs):
+                    print("length of texsources")
+                    print(len(gfmaterial.texturesources))
                     uvmapnode = mat.node_tree.nodes.new('ShaderNodeUVMap')
-                    uvmapnode.uv_map = "UVMap"+str(texcoord.unitindex)
+                    if(len(gfmaterial.texturesources) <= 0):
+                        uvmapnode.uv_map = "UVMap"+str(gfmaterial.unitindex)
+                    else:
+                        uvmapnode.uv_map = "UVMap"+str(int(gfmaterial.texturesources[texindex]))
                     
                     uvmapnode.location[0] = uvmapnode.location[0] + 200.0
                     uvmapnode.location[1] = uvmapnode.location[1] + (300.0*texindex)

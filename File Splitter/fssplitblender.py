@@ -100,8 +100,8 @@ def LoadFS(file,arr,offset,parent,recursion):
             print("testfilenumbers")
             print(testfile1)
             print(testfile2)
-            #check if it's inbetween range and if the offsets actually have any length. also if it has a valid offset length(it can't be more than 0x1C because it only takes up so much space)
-        if((testfile1 < 65 or testfile1 > 90) or (testfile2 < 65 or testfile2 > 90) or (arr[initfilecount+number][3] == 0) or (testnumofoffsets > 31)):
+            #check if it's inbetween range and if the offsets actually have any length. also if it has a valid offset length(it can't be more than a certain length because it only takes up so much space)
+        if((testfile1 < 65 or testfile1 > 90) or (testfile2 < 65 or testfile2 > 90) or (arr[initfilecount+number][3] == 0) or (testnumofoffsets > 75)):
             print("subfolder not found")
             print()
             print()
@@ -132,11 +132,17 @@ def LoadFS(file,arr,offset,parent,recursion):
         #allfound = (count >= (numoffsets - 1))
             
     
-def MakeDirs(MasterList,file): 
+def MakeDirs(MasterList,file,path): 
     count = 0
     for x in MasterList:
             directory_name = ""
             count2 = 0
+            newpath = path.rsplit('\\', 1)[0];
+            print("newpath num")
+            print(path.rsplit('\\', 1))
+            if (len(path.rsplit('\\', 1)) > 1):
+                newpath = newpath+"\\"
+                directory_name = newpath
             for y in MasterList[count][0]:
                 directory_name = directory_name+(str(MasterList[count][0][count2])+"/")
                 count2 = count2 + 1
@@ -249,6 +255,12 @@ def checkFileType(offset,file):
     bytedata5 = file.read(4)
     if(bytedata5 == b'\x00\x00\x06\x00'):
         magic = "gfanimation"
+    if(bytedata5 == b'\x00\x05\x12\x14'):
+        magic = "gfbcol"
+    if(bytedata5 == b'\x00\x00\x01\x00'):
+        magic = "gftrainermodelpack"
+    if(bytedata5 == b'\x11\x01\x00\x00'):
+        magic = "gfanimationpack"
     
     if OverrideFileName == True:
         return magic
@@ -297,6 +309,6 @@ class GFFileSystem(object):
         count = count + 1
         print("-----------------------")
     
-    MakeDirs(arr,fs)
+    MakeDirs(arr,fs,filepath)
         
     fs.close()
