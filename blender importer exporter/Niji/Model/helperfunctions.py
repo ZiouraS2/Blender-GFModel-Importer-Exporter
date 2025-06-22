@@ -18,3 +18,9 @@ def skippadding3(file):
     if((file.tell() & 0xF) != 0):
         file.seek(file.tell()+1)
         skippadding3(file)
+
+# goes until the last byte in current file position is 0
+def skippadding3ffver(file):
+    if((file.tell() & 0xF) != 0):
+        file.write(b'\xFF')
+        skippadding3ffver(file)

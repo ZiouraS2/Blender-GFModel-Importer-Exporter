@@ -54,6 +54,7 @@ class PicaCommandReader:
     
     def __init__(self,binarydata):	
         self.commands = []
+        self.uintcommands = []
         self.vecF24 = PicaFloatVector24.PicaVectorFloat24()
         self.uniformindex = 0
         self.uniform32bits = True
@@ -110,4 +111,29 @@ class PicaCommandReader:
             if((index & 1) != 0):
                 index+=1
                 
-          
+    def serialize_commands(self):
+        commandlist = []
+        for x in range(len(self.commands)):
+            currcommand = self.commands[x]
+            print(currcommand.register.name)
+            #append first parameter first
+            commandlist.append(currcommand.parameters[0])
+            print(currcommand.parameters[0])
+            #command is next, btu we need to rebuild it from the data in the picacommand
+            if(len(currcommand.parameters) > 1):
+                extraparams = (((len(currcommand.parameters) - 1) & 0x7ff) << 20)
+                newcommand = (currcomand.register.value | (currcommand.mask << 16) | extraparams | True)
+                #add command
+                commandlist.append(newcommand)
+                for x in range(len(currcommand.parameters) - 1):
+                    commandlist.append(currcommand.parameters[x+1])
+                    #align stuff
+                    if((len(commandlist) & 1) != 0):
+                        commandlist.append(0)
+            else:
+                newcommand = (currcommand.register.value | (currcommand.mask << 16))
+                #add command
+                commandlist.append(newcommand)
+                
+            print(commandlist)
+        return commandlist

@@ -22,7 +22,8 @@ from . import PicaAttributeFormat
 
 
 class GFMesh(object):         
-
+    def __init2__(self):
+        print("so cool")
         
     def __init__(self,file):
         self.meshgfsection = GFSection.GFSection(file)
@@ -48,6 +49,38 @@ class GFMesh(object):
             
         #no looping here because it makes it easier to digest
         self.GFSubMeshes = GFSubMesh.GFSubMeshes(file,self.submeshescount)
+        
+    def writeMesh(self, f):
+        # placeholder(will write gfsection here after we know the length of the material section (possec1start - possec1end))
+        f.write(bytes(16))
+        possec1start = f.tell()
+        #does this not get updated? uhhhh
+        f.write(self.namehash)
+        bytearray1 = bytearray(self.namestr, "utf-8")
+        bytearray1 = bytearray1[:64]
+        #pad out rest of string
+        bytearray1 += bytearray(64 - len(bytearray1))
+        f.write(bytearray1)
+        helperfunctions.skippadding1(4,f)
+        self.boundingboxminvector.writeVec4(f)
+        self.boundingboxmaxvector.writeVec4(f)
+        f.write(self.submeshescount.to_bytes(4, 'little'))
+        f.write(self.boneindicespervertex.to_bytes(4, 'little'))
+        f.write(b'\xff\xff\xff\xff\xff\xff\xff\xff')
+        f.write(b'\xff\xff\xff\xff\xff\xff\xff\xff')
+        
+        for x in range(self.commandscount):    
+            self.GFMeshCommandses[x].writeGFMeshCommands(f)
+            
+        self.GFSubMeshes.writeSubMeshes(f)
+        #where the gfsection ends
+        possec1end = f.tell()
+        f.seek(possec1start - 16)
+        #write gfsection
+        newGFSection = GFSection.GFSection.__new__(GFSection.GFSection)
+        newGFSection.__init2__("mesh",(possec1end - possec1start))
+        newGFSection.writenewsection(f)
+        f.seek(possec1end)   
     
     def getfixedattributes(self,submesh,submesh_index):
         scales = np.array([0.007874016,0.003921569,3.051851E-05,1])

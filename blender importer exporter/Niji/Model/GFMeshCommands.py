@@ -14,8 +14,16 @@ class GFMeshCommands(object):
         for x in range(self.commandslength >> 2):
             self.commands.append(int.from_bytes(file.read(4),"little"))
             
-   
-        
+    def writeGFMeshCommands(self,f):
+        f.write(self.commandslength.to_bytes(4, 'little'))
+        f.write(self.commandsindex)
+        f.write(self.commandscount)
+        f.write(bytes(4))
+        print(self.commandslength) 
+        #print(self.commandslength >> 2)
+        print(len(self.commands))
+        for x in range(self.commandslength >> 2):
+            f.write(self.commands[x].to_bytes(4, 'little'))
     
     def __init__(self,file):
         self.readGFMeshCommands(file)

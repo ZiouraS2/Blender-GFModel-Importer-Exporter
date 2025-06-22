@@ -13,7 +13,12 @@ class Vector4(object):
         self.Z = 0
         self.W = 0
 		
-        X = struct.unpack('f',file.read(4))
-        Y = struct.unpack('f',file.read(4))
-        Z = struct.unpack('f',file.read(4))
-        W = struct.unpack('f',file.read(4))
+        self.X = struct.unpack('f',file.read(4))
+        self.Y = struct.unpack('f',file.read(4))
+        self.Z = struct.unpack('f',file.read(4))
+        self.W = struct.unpack('f',file.read(4))
+    def writeVec4(self,f):
+        f.write(struct.pack('f',self.X[0]))
+        f.write(struct.pack('f',self.Y[0]))
+        f.write(struct.pack('f',self.Z[0]))
+        f.write(struct.pack('f',self.W[0]))

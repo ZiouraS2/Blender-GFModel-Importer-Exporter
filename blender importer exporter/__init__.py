@@ -78,42 +78,17 @@ class ExportGFMDL(bpy.types.Operator, ExportHelper):
         options={'HIDDEN'},
     )
     
-    export_materials: BoolProperty(
-        name="Export Materials",
-        description="Export material data",
-        default=True,
-    )
-    
-    export_bones: BoolProperty(
-        name="Export Bones",
-        description="Export bone/armature data",
-        default=True,
-    )
-    
-    export_selection: BoolProperty(
-        name="Selection Only",
-        description="Export selected objects only",
-        default=False,
-    )
     
     def execute(self, context):
         # Import here to avoid circular imports
         from . import exporter
         
         # Get objects to export
-        if self.export_selection:
-            objects = context.selected_objects
-        else:
-            objects = context.scene.objects
-        
-        # Filter to only include mesh objects
-        mesh_objects = [obj for obj in objects if obj.type == 'MESH']
+        objects = context.selected_objects      
         
         return exporter.save_gfmdl(
             self.filepath,
-            mesh_objects,
-            export_materials=self.export_materials,
-            export_bones=self.export_bones
+            objects,
         )
     
     def draw(self, context):

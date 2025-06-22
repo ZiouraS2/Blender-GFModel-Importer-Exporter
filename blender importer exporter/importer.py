@@ -10,8 +10,8 @@ from mathutils import Vector, Matrix, Euler
 
 # Import the Niji library
 # Module is now local to addon
-from .Niji.Model.GFModel import GFModel
-from .Niji.Model.PicaCommandReader import PicaCommandReader
+from Niji.Model.GFModel import GFModel
+from Niji.Model.PicaCommandReader import PicaCommandReader
 
 def load_gfmdl(filepath, import_bones=True, import_materials=True):
     print(f"Loading GFMDL file: {filepath}")
@@ -26,7 +26,16 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
             f.seek(0)
         
         # Parse the model
-        gfmodel = GFModel(f)
+        gfmodel = GFModel(f,model_name)
+        
+        #add to blender internal 'storage'
+        if ((hasattr(bpy.types.Scene, 'gfmodels')) == False):
+            bpy.types.Scene.gfmodels = []
+            bpy.types.Scene.gfmodels.append(gfmodel)
+        else:
+            bpy.types.Scene.gfmodels.append(gfmodel)
+            
+            
         
         # Create a dictionary to hold the created objects
         created_objects = []
@@ -51,7 +60,7 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 gfmesh.getfixedattributes(submesh,submesh_idx)
                 
                 # Extract vertex data
-                vertices, normals, uvs, colors, bone_weights, bone_indices, uvs1, uvs2 = extract_vertex_data(submesh)
+                vertices, normals, tangents, uvs, colors, bone_weights, bone_indices, uvs1, uvs2 = extract_vertex_data(submesh)
                 
                 # Extract face indices
                 faces = extract_face_indices(submesh)
@@ -73,7 +82,20 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 if normals:
                     # In Blender 4.3, simply set the normals directly
                     me.normals_split_custom_set_from_vertices(normals)
-                
+                    
+                if tangents:
+                    # new vertex color layer because blender tangents aren't persistent
+                    vcol_layer = me.vertex_colors.new(name="CustomTangent")
+                    for i, loop in enumerate(me.loops):
+                            loop = me.loops[i]
+                            vert_idx = loop.vertex_index
+
+                            tangent = tangents[vert_idx]
+                            tangent.normalize()
+
+                            # Set RGBA 
+                            vcol_layer.data[i].color = (tangent.x, tangent.y, tangent.z, 1.0)
+                            
                 print(submesh_name)
                 # Add UVs if available
                 if uvs:
@@ -95,9 +117,9 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 
                 # Add vertex colors if available
                 if colors:
-                    vcol_layer = me.vertex_colors.new(name="Col")
+                    vcol_layer2 = me.vertex_colors.new(name="Col")
                     for i, loop in enumerate(me.loops):
-                        vcol_layer.data[i].color = colors[loop.vertex_index]
+                        vcol_layer2.data[i].color = colors[loop.vertex_index]
                 
                 # Create the object
                 obj = bpy.data.objects.new(submesh_name, me)
@@ -187,6 +209,7 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
 def extract_vertex_data(submesh):
     vertices = []
     normals = []
+    tangents = []
     uvs = []
     uvs1 = []
     uvs2 = []
@@ -240,7 +263,7 @@ def extract_vertex_data(submesh):
                 elif attr.attribformat.name == "Ubyte":
                     value = int.from_bytes(rawbuffer.read(1), "little")
                 elif attr.attribformat.name == "Byte":
-                    value = struct.unpack('h', rawbuffer.read(4))[0]
+                    value = struct.unpack('h', rawbuffer.read(1))[0]
                 else:
                     rawbuffer.read(4)  # Skip unknown format
                     value = 0
@@ -265,7 +288,10 @@ def extract_vertex_data(submesh):
         if vertex_data['normal']:
             nx, ny, nz = vertex_data['normal'][:3]
             normals.append(Vector((nx, ny, nz)).normalized())
-        
+            
+        if vertex_data['tangent']:
+            tx, ty, tz = vertex_data['tangent'][:3]
+            tangents.append(Vector((tx, ty, tz)).normalized())
         # Add UV if available
         if vertex_data['texcoord0']:
             u, v = vertex_data['texcoord0'][:2]
@@ -325,10 +351,10 @@ def extract_vertex_data(submesh):
             temparray = np.vstack((values,)*num_vertices)
             uvs2 = temparray.tolist()
     
-    return vertices, normals, uvs, colors, bone_weights, bone_indices, uvs1, uvs2
+    return vertices, normals, tangents, uvs, colors, bone_weights, bone_indices, uvs1, uvs2
 
 def extract_face_indices(submesh):
-
+    #need to add support for models wiht byte indices
     faces = []
     indices_buffer = submesh.gfsubmeshpart2.indices
     indices_buffer.seek(0)

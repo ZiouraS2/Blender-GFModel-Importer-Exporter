@@ -93,7 +93,43 @@ class PicaVectorFloat24(object):
         self.Word2 = num
         self.updatex()
         self.updatey()
+        
+    def getword24(self,value):
+        word = int(value)
+        if ((word & 0x7fffffff) != 0):
+            mantissa = word & 0x7fffff
+            exponent = ((word >> 23) & 0xff) - 64
+            signbit = word >> 31
+            
+            word = mantissa >> 7
+            word |= (exponent & 0x7f) << 16
+            word |= signbit << 23
+        else:
+            word = word >> 8
+            
+        return word
+        
+    def calculatewords(x,y,z,w):
+        wx = getword24(x)
+        wy = getword24(y)
+        wz = getword24(x)
+        ww = getword24(w)
+        
+        self.word0 = ((ww << 8) | (wz >> 16))
+        self.word1 = ((wz << 16) | (wy >> 9))
+        self.word2 = ((wy << 24) | (wx >> 0))
+        
+    def setx(self,value):
+        calculatewords(value,self.y,self.z,self.w)
+        
+    def sety(self,value):
+        calculatewords(self.x,value,self.z,self.w)
+        
+    def setz(self,value):
+        calculatewords(self.x,self.y,value,self.w)
 
+    def setw(self,value):
+        calculatewords(self.x,self.y,self.z,value)
 
     def __init__(self):	
         self.X = 0.0

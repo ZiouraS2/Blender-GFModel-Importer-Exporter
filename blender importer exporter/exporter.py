@@ -3,46 +3,868 @@ import os
 import sys
 import io
 import struct
+import math
 import numpy as np
 import bmesh
 from mathutils import Vector, Matrix
 
-def save_gfmdl(filepath, objects, export_materials=True, export_bones=True):
+from Niji.Model.GFModel import GFModel
+from Niji.Model.RGBA import RGBA
+from Niji.Model.Matrix4x4 import Matrix4x4
+from Niji.Model.GFMaterial import GFMaterial
+from Niji.Model.PicaCommandReader import PicaCommandReader
+from Niji.Model.GFHashName import GFHashName
+from Niji.Model.GFNV1 import GFNV1
+from Niji.Model.GFBone import GFBone
+from Niji.Model.GFMaterial import GFMaterial
+from Niji.Model.GFTextureWrap import GFTextureWrap
+from Niji.Model.PicaRegisters import PicaRegisters
+from Niji.Model.PicaCommand import PicaCommand
+from Niji.Model.UniformManager import UniformManager
+from Niji.Model.PicaFloatVector24 import PicaVectorFloat24
+from Niji.Model.GFMeshCommands import GFMeshCommands
+from Niji.Model.PicaAttributeName import PicaAttributeName
+from Niji.Model.PicaAttributeFormat import PicaAttributeFormat
+from Niji.Model.PicaAttribute import PicaAttribute
+from Niji.Model.PicaFixedAttribute import PicaFixedAttribute
+
+def save_gfmdl(filepath, objects):
     print(f"Exporting to: {filepath}")
+    model_name = os.path.basename(filepath).rsplit('.', 1)[0].replace(".PSSG", "")
     
     # Check if we have objects to export
     if not objects:
         print("No objects to export")
         return {'CANCELLED'}
-    
-    # Get the first armature in the scene if available
-    armature = None
-    if export_bones:
-        for obj in bpy.context.scene.objects:
-            if obj.type == 'ARMATURE':
-                armature = obj
+            
+    currcoll = None    
+    gfmodeldata = None
+    #Find collecton containing selected objects
+    for col in bpy.data.collections:    
+        for obj in objects:
+            print(obj.name)
+            if obj.name in col.objects:
+                print("Match")
+                print(col.name)
+                currcoll = col
                 break
+        
+    # access internal gfmodel data saved
+    print("hasattr(gfmodels)")
+    print(hasattr(bpy.types.Scene, 'gfmodels'))
+    print("hasattr currcoll)")
+    print(currcoll)
+    print((hasattr(bpy.types.Scene, 'gfmodels') and hasattr(currcoll, 'name') ))
+    if (hasattr(bpy.types.Scene, 'gfmodels') and hasattr(currcoll, 'name') ):
+        gfmodels = bpy.types.Scene.gfmodels
+        for x in range(len(bpy.types.Scene.gfmodels)):
+            print(gfmodels[x].name)
+            print(currcoll.name)
+            if(gfmodels[x].name in currcoll.name):
+                print("found match between gfmodel data and blender data")
+                print(gfmodels[x].name)
+                gfmodeldata = gfmodels[x]
+            else:
+                print("no match found this time")
     
-    # Create a new GFModel
-    model_data = create_gfmodel_data(objects, armature, export_materials)
     
-    # Write the model data to file
-    with open(filepath, 'wb') as f:
-        # Write file signature
-        f.write(b'\x17\x21\x12\x15')
-        
-        # Write sections count (placeholder, will be updated later)
-        f.write((1).to_bytes(4, byteorder='little'))
-        
-        # Write padding
-        f.write(bytes(8))
-        
-        # Write model section
-        write_model_section(f, model_data)
+    #Create a new GFModel
+    if(gfmodeldata == None):
+        print("unsupported")
+        gfmodel = recreate_gfmodel_data(currcoll, gfmodeldata)
+    else:
+        print("recreating gfmodeldata")
+        gfmodel = create_new_gfmodel_data(currcoll)
+    
+    #Write the model data to file
+    with open(filepath, 'wb') as f:      
+        # Write model
+        if(gfmodeldata != None):
+            gfmodeldata.writeModel(f,currcoll)
+        else:
+            print("no gfmdl data found")
     
     print(f"Successfully exported to {filepath}")
     return {'FINISHED'}
+    
+#https://stackoverflow.com/questions/4459703/how-to-make-lists-contain-only-distinct-element-in-python
+def _f(seq):  
+        seen = set()
+        return [x for x in seq if x not in seen and not seen.add(x)]    
+        
+def repackvertexdata(submeshes, gfmeshdata, gfbones):
+    for x1 in range(len(submeshes)):
+        currsubmesh = submeshes[x1]
+        # note, not all submeshes will ahve all of these so not all of them will be used
+        # need to add submesh renaming changes
+        vertices = []
+        normals = []
+        uvs = []
+        uvs1 = []
+        uvs2 = []
+        colors = []
+        bone_weights = []
+        bone_indices = []
+    
+        # Get past raw buffer and attributes
+        rawbuffer = gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart2.rawbuffer
+        attributes = gfmeshdata.GFSubMeshes.GFSubMeshes[x1].attributes
+        fixedattributes = gfmeshdata.GFSubMeshes.GFSubMeshes[x1].fixedattributes
+        vertexstride = gfmeshdata.GFSubMeshes.GFSubMeshes[x1].vertexstride
+        verticeslength = gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.verticeslength
+        boneindices = []
+        submesh_name2 = gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.submeshname.strip('\x00')
+    
+        newrawbuffer = io.BytesIO()
+    
+        # get number of vertices
+        num_vertices = len(currsubmesh.data.vertices)
+    
+        # Map to keep track of attribute data by name
+        attr_map = {}
+    
+        # Process each vertex
+        
+        haveuv0 = (currsubmesh.data.uv_layers.find("UVMap0") != -1)
+        haveuv1 = (currsubmesh.data.uv_layers.find("UVMap1") != -1)
+        haveuv2 = (currsubmesh.data.uv_layers.find("UVMap2") != -1)
+        #get correct uvs? first one in loop that matches vertex index
+        for v_idx in range(num_vertices):
+            for i, loop in enumerate(currsubmesh.data.loops):
+                if loop.vertex_index == v_idx:
+                    if haveuv0:
+                        uv = currsubmesh.data.uv_layers[0].data[i].uv
+                        uvs.append(uv.copy())
+                    if haveuv1:
+                        uv1 = currsubmesh.data.uv_layers[1].data[i].uv
+                        uvs1.append(uv1.copy())
+                    if haveuv2:
+                        uv2 = currsubmesh.data.uv_layers[2].data[i].uv
+                        uvs2.append(uv2.copy())
+                    break
+        
+        for v_idx in range(num_vertices):
+        
+            # Reset temporary storage for this vertex
+            vertex_data = {
+                'position': None,
+                'normal': None,
+                'texcoord0': None,
+                'color': None,
+                'boneweight': None,
+                'boneindex': None,
+                'texcoord1': None,
+                'texcoord2': None
+            }
+        
+            # Read all attributes for this vertex
+    
+            for attr in attributes:
+                attr_name = attr.name.name.lower()
+                elements = []
+                values = []
+                # Add position (required)
+                if attr_name == 'position':
+                    x, y, z = list(currsubmesh.data.vertices[v_idx].co)
+                    float(x) / attr.scale
+                    float(y) / attr.scale
+                    float(z) / attr.scale
+                    values.append((x, y, z))
+                
+                # Add normal if available
+                if attr_name == 'normal':
+                    nx, ny, nz = list(currsubmesh.data.vertices[v_idx].normal)
+                    float(nx) / attr.scale
+                    float(ny) / attr.scale
+                    float(nz) / attr.scale
+                    values.append((nx, ny, nz))
+                    
+                if attr_name == 'tangent':
+                    r, g, b, a = list(currsubmesh.data.vertex_colors["CustomTangent"].data[v_idx].color)
+                    values.append((r, g, b))
+                    
+                # Add UV if available
+                if attr_name == 'texcoord0':
+                    u, v = list(uvs[v_idx])
+                    values.append((float(u) / attr.scale, float(v / attr.scale)))  # Flip Y-coordinate for Blender # Seems to actually be incorrect this way, reverting change
+            
+                if attr_name == 'texcoord1':
+                    u, v = list(uvs1[v_idx])
+                    values.append((float(u) / attr.scale, float(v) / attr.scale))  
+            
+                if attr_name == 'texcoord2':
+                    u, v = list(uvs2[v_idx])
+                    values.append((float(u) / attr.scale, float(v) / attr.scale))  # Flip Y-coordinate for Blender # Seems to actually be incorrect this way, reverting change 
+        
+                # Add color if available
+                if attr_name == 'color':
+                    r, g, b, a = list(currsubmesh.data.vertex_colors["Col"].data[v_idx].color)
+                    values.append((float(r) / attr.scale, float(g) / attr.scale, float(b) / attr.scale, float(a) / attr.scale))
+        
+                # Add bone weights and indices if available
+                if attr_name == 'boneweight':
+                    #each access to this array will have another array with a list of bone weights
+                    boneweights = []
+                    for group in currsubmesh.data.vertices[v_idx].groups:
+                        boneweights.append(group.weight / attr.scale)
+                    # add the weights that are zero for stuff that got deleted?
+                    for x in range(4 - len(boneweights)):
+                        boneweights.append(float(0))
+                    values.append(boneweights)
+                if attr_name == 'boneindex':
+                    for group in currsubmesh.data.vertices[v_idx].groups:
+                        #blender bone index name
+                        name = currsubmesh.vertex_groups[group.group].name
+                        #match up to gfbone order which(might?) not be the same
+                        #also updating boneindices because the buffere references the index of the boneindices instead of just the bones(convoluted)
+                        #this also means you can't have more than 31 bones acting on said submesh as a result
+                        boneindicesindex = []
+                        index = 0
+                        for x in range(len(gfbones)):
+                            if gfbones[x].bonename == name:
+                                index = x 
+                                #indices are added in order found in buffer? doesn't really matter anyway as long as the boneindice and buffer index to boneindices are consistent
+                                if (index not in boneindices) and (len(boneindices) < 31):
+                                    boneindices.append(index)
+                                    boneindicesindex.append(len(boneindices))
+                                else:
+                                    for x in range(len(boneindices)):
+                                        if (boneindices[x] == index) and (len(boneindices) < 31):
+                                           boneindicesindex.append(x)
+                    # add the weights that are zero for stuff that got deleted?
+                    #should be 0th element for said submeshes boneindex, not just 0 overall
+                    for x in range(4 - len(boneindicesindex)):
+                        boneindicesindex.append(0)
+                    values.append(boneindicesindex)
+            
+                # Read the elements for this attribute
+                for e in range(attr.elements):
+                    if v_idx < 2:      
+                        print(values)
+                        print(attr.elements)
+                        print(attr_name)
+                    if attr.attribformat.name == "Float":
+                        # why does struct use tuples lmao
+                        value = struct.pack('f', values[0][e])
+                        newrawbuffer.write(value)
+                    elif attr.attribformat.name == "Short": 
+                        value = struct.pack('h', values[0][e])
+                        newrawbuffer.write(value)
+                    elif attr.attribformat.name == "Ubyte":
+                        value = struct.pack('B', int(values[0][e]))
+                        newrawbuffer.write(value)
+                    elif attr.attribformat.name == "Byte":
+                        value = struct.pack('b', int(values[0][e]))
+                        newrawbuffer.write(value)
+                
+ 
+            
+                # Store the data by attribute name
+                vertex_data[attr_name] = elements
+        
+            if v_idx == 0:
+                #length of each vertex in bytes
+                vertexstride = len(newrawbuffer.getvalue())
+        print(x1)
+        gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart2.rawbuffer = None
+        gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart2.rawbuffer = newrawbuffer
+        
+        gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.verticescount = num_vertices
+        gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.verticeslength = len(newrawbuffer.getvalue())
+        
+        gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.boneindices = boneindices
+    # add attributes from fixed attributes:
+    # doing nothing for fixattr for now they will jsut remain as they were for said model
+    for fixattr in fixedattributes:
+        fixattrname = fixattr.name.name.lower()
+   
+   
 
+def repackindices(submeshes, gfmeshdata):
+    #this should be right... maybe?
+    for x in range(len(submeshes)):
+        new_indices_buffer = io.BytesIO()
+        indices_buffer = gfmeshdata.GFSubMeshes.GFSubMeshes[x].gfsubmeshpart2.indices
+        for tri in submeshes[x].data.loop_triangles:
+            indices = tri.vertices[:]
+            new_indices_buffer.write(struct.pack('h', indices[0]))
+            new_indices_buffer.write(struct.pack('h', indices[1]))
+            new_indices_buffer.write(struct.pack('h', indices[2]))
+        
+            gfmeshdata.GFSubMeshes.GFSubMeshes[x].gfsubmeshpart2.indices = new_indices_buffer
+        gfmeshdata.GFSubMeshes.GFSubMeshes[x].gfsubmeshpart1.indicescount = len(submeshes[x].data.loop_triangles)*3
+        gfmeshdata.GFSubMeshes.GFSubMeshes[x].gfsubmeshpart1.indiceslength = len(new_indices_buffer.getvalue())
+    print("set indices buffer")
+    print(len(indices_buffer.getvalue()))
+    print(len(new_indices_buffer.getvalue()))
+    
+def recreate_gfmodel_data(coll, gfmodel):
+        #create new hashnames for new meshes
+        meshnamelist = []
+        for obj in coll.objects:
+            if obj.type == 'MESH':
+                #making sure submeshes aren't included
+                if not ('.' in obj.name):
+                    meshnamelist.append(obj.name)              
+        newmeshnames = GFHashName.__new__(GFHashName)
+        newmeshnames.__init2__(meshnamelist) 
+        gfmodel.meshnames = newmeshnames
+        
+        newgfbones = []
+        #re-create gfbones
+        for obj in coll.objects:
+            if obj.type == 'ARMATURE':
+                arm = obj.data
+                for bone in arm.bones:
+                    print(bone.name)                      
+                    if bone.parent == None:
+                        tempnewGFBone = GFBone.__new__(GFBone)
+                        translationvec = bone.head
+       
+                        rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
+                        full_matrix = Matrix.Translation(translationvec) @ rotation
+                        tempnewGFBone.__init2__(bone.name,"placeholder",1.0,1.0,1.0,bone.matrix.to_euler('XYZ').x,bone.matrix.to_euler('XYZ').y,bone.matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
+                        newgfbones.append(tempnewGFBone)
+                    else:
+                        key = arm.bones.find(bone.parent.name)
+                        if(key != -1):
+                            parentbone = arm.bones[bone.parent.name]
+                        newmat = parentbone.matrix.inverted() @ bone.matrix
+                        translationvec = bone.head
+                        parenttranslationvec = parentbone.head
+                        
+                        rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
+                        full_matrix = Matrix.Translation(translationvec) @ rotation
+                        parent_matrix = parentbone.matrix.to_4x4()
+                        parent_matrix = Matrix.Translation(parenttranslationvec) @ parent_matrix 
+                        #full_matrix = full_matrix @ parent_matrix.inverted() 
+                        tempnewGFBone = GFBone.__new__(GFBone)
+                        #placeholder for scale which seemling has no way to get back?
+                        #translation values are swapped for blenders y up -> z up system??
+                        #or not i give up
+                        tempnewGFBone.__init2__(bone.name,parentbone.name,1.0,1.0,1.0,full_matrix.to_euler('XYZ').x,full_matrix.to_euler('XYZ').y,full_matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
+                        newgfbones.append(tempnewGFBone)
+        gfmodel.GFBones = newgfbones
+        gfmodel.bonescount = len(newgfbones)
+                        
+        #add/create new material stuff
+        #for stuff that didn't already have material data we will need to also change matereialhash and picacommands values
+        for obj in coll.objects:
+            if obj.type == 'MESH':
+                mat = obj.data.materials[0]
+                gfmat = [mat1 for mat1 in gfmodel.GFMaterials if mat1.materialname.hashes[0][1] in mat.name]
+                print(mat.name)
+                print(gfmodel.GFMaterials[0].materialname.hashes[0][1])
+                
+                #edit/change texture coords
+                tex_image_nodes = [node for node in mat.node_tree.nodes if node.type == 'TEX_IMAGE']
+                tex_coord_nodes = [node for node in mat.node_tree.nodes if node.type == 'MAPPING']
+                print(len(tex_coord_nodes))
+                gfmat[0].unitscount = len(tex_coord_nodes)
+                for x in range(len(tex_image_nodes)):           
+                    print([i.name for i in tex_coord_nodes[x].inputs])
+                    print([i.enabled for i in tex_coord_nodes[x].inputs])
+                    if(tex_image_nodes[x].extension == 'CLIP'):
+                        gfmat[0].coords[x].wrapu = GFTextureWrap.ClampToEdge
+                    if(tex_image_nodes[x].extension == "REPEAT"):
+                        gfmat[0].coords[x].wrapu = GFTextureWrap.Repeat
+                    if(tex_image_nodes[x].extension == "MIRROR"):
+                        gfmat[0].coords[x].wrapu = GFTextureWrap.Mirror
+                for x in range(len(tex_coord_nodes)):          
+                    gfmat[0].coords[x].rotation = (math.degrees(tex_coord_nodes[x].inputs['Rotation'].default_value[0]))
+                    print(tex_coord_nodes[x].inputs['Location'].default_value[0])
+                    # i love blender so-f-df-s-s-f- much!
+                    gfmat[0].coords[x].translation.X = ((tex_coord_nodes[x].inputs['Location'].default_value[0])/2,)
+                    gfmat[0].coords[x].translation.Y = ((tex_coord_nodes[x].inputs['Location'].default_value[1])/2,)            
+                    gfmat[0].coords[x].scale.X = (tex_coord_nodes[x].inputs['Scale'].default_value[0],)
+                    gfmat[0].coords[x].scale.Y = (tex_coord_nodes[x].inputs['Scale'].default_value[1],)
+                #
+        
+        #re-create meshes
+        for obj in coll.objects:
+            defaultvaluesmesh = gfmodel.GFMeshes[0]
+            newmeshes = []
+            submsh_idx = 0
+            if obj.type == 'MESH':
+                mesh = obj
+                ogmesh = None
+                submeshesfound = []
+                for x in range(len(gfmodel.GFMeshes)):
+                    print(obj.name)
+                    print(gfmodel.GFMeshes[x].namestr.strip('\x00'))
+                    if obj.name in gfmodel.GFMeshes[x].namestr.strip('\x00') :
+                        ogmesh = gfmodel.GFMeshes[x]
+                if(ogmesh == None):
+                    print("super cool unsupported print statement")
+                    #gfmesh = create_gfmesh_from_blender(gfmesh)
+                else:
+                    #check to make sure it's not actually a submesh
+                    if (obj.name in submeshesfound) == False:
+                        gfmesh = ogmesh
+                        gfmesh.namestr = obj.name
+                        hasher = GFNV1()
+                        hasher.hashstring(obj.name)
+                        gfmesh.namehash = (hasher.hashcode.value).to_bytes(4, 'little')
+                        submeshesfound.append(obj.name)
+                        blendersubmeshes = [node for node in coll.objects if node.type == 'MESH' and obj.name in node.name]
+                        gfmesh.submeshescount = len(blendersubmeshes)
+                        #convoluted way to obtain the correct value for this
+                    if obj.vertex_groups:
+                        maxcount = 0
+                        for v in obj.data.vertices:
+                            count = 0
+                            for g in v.groups:
+                                weight = g.weight
+                                if (weight > 0):
+                                    count = count + 1
+                                else:
+                                    break
+                            if count > maxcount:
+                                maxcount = count
+                                
+                    gfmesh.boneindicespervertex = maxcount
+                    #change index commands that need to update
+                    for x in range(gfmesh.submeshescount):
+                        indexcommands = gfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands
+                        print(indexcommands)
+                        picacommands = PicaCommandReader(indexcommands)
+                        for x in range(len(picacommands.commands)):
+                            if(picacommands.commands[x].register.name == "GPUREG_NUMVERTICES"):
+                                picacommands.commands[x].parameters[0] = len(obj.data.polygons)*3
+                            if(picacommands.commands[x].register.name == "GPUREG_INDEXBUFFER_CONFIG"):
+                                picacommands.commands[x].parameters[0] = 0x81999999
+                         
+                        #set to new commands
+                        gfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands = picacommands.serialize_commands()
+                        print("commandlength")
+                        print(len(gfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands))
+                        gfmesh.GFMeshCommandses[(3*submsh_idx)+2].commandslength = (len(gfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands))*4 
+                    
+                    #recreate rawbuffer and indices
+                    print(len(blendersubmeshes))
+                    repackvertexdata(blendersubmeshes, gfmesh, gfmodel.GFBones)
+                    repackindices(blendersubmeshes, gfmesh)
+                
+                submsh_idx = submsh_idx + 1
+
+
+def create_new_gfmodel_data(coll):
+    #initialize new gfmodel 
+    gfmodeldata = GFModel.__new__(GFModel)
+    gfmodeldata 
+    #add materials that are found in blender materials to list
+    materialnames = []
+    texturenames = []
+    shadernames = []
+    for obj in coll.objects:
+        for material in obj.material_slots:
+            materialnames.append(material.name)
+            gfmaterialdata = GFMaterial.__new__(GFMaterial)
+            
+            newmaterialname = GFHashName2.__new__(GFHashName2)
+            newmaterialname.__init2__(material.name)      
+            #the frag/vert shader will have to be exported with files
+            newfragshadername = GFHashName2.__new__(GFHashName2)
+            newfragshadername.__init2__("Map00_default_AGREF")       
+            newvertshadername = GFHashName2.__new__(GFHashName2)
+            newvertshadername.__init2__("Default")
+            gfmaterialdata.materialname = newmaterialname
+            gfmaterialdata.shadername = newfragshadername
+            gfmaterialdata.fragshadername = newfragshadername
+            shadernames.append("Map00_default_AGREF")
+            gfmaterialdata.vtxshadername = newvertshadername
+            gfmaterialdata.luthash0id = 0
+            gfmaterialdata.luthash1id = 0
+            gfmaterialdata.luthash2id = 0
+            #bumptexture is seemingly the index for normal maps which i'm not allowing here yet
+            gfmaterialdata.bumptexture = -1
+            gfmaterialdata.constant0assignment = 0
+            gfmaterialdata.constant1assignment = 0
+            gfmaterialdata.constant2assignment = 0
+            gfmaterialdata.constant3assignment = 0
+            gfmaterialdata.constant4assignment = 0
+            gfmaterialdata.constant5assignment = 0
+            newconstcolor = RGBA.__new__(RGBA)
+            newconstcolor.__init2__(255,255,255,255)
+            gfmaterialdata.constant0color = newconstcolor
+            gfmaterialdata.constant1color = newconstcolor
+            gfmaterialdata.constant2color = newconstcolor
+            gfmaterialdata.constant3color = newconstcolor
+            gfmaterialdata.constant4color = newconstcolor
+            gfmaterialdata.constant5color = newconstcolor
+            gfmaterialdata.specular0color = newconstcolor
+            gfmaterialdata.specular1color = newconstcolor
+            gfmaterialdata.blendcolor = newconstcolor
+            gfmaterialdata.emissioncolor = newconstcolor
+            gfmaterialdata.ambientcolor = newconstcolor
+            gfmaterialdata.diffusecolor = newconstcolor
+            gfmaterialdata.edgetype = 0
+            gfmaterialdata.idedgeenable = 0
+            gfmaterialdata.edgeid = 0
+            gfmaterialdata.projectiontype = 0
+            gfmaterialdata.rimpower = float(8)
+            gfmaterialdata.rimscale = float(1)
+            gfmaterialdata.phongpower = float(8)
+            gfmaterialdata.phongscale = float(1)
+            gfmaterialdata.idedgeoffsetenable = 1
+            gfmaterialdata.edgemapalphamask = -1
+            gfmaterialdata.baketexture0 = 0
+            gfmaterialdata.baketexture1 = 0
+            gfmaterialdata.baketexture2 = 0
+            gfmaterialdata.bakeconstant0 = 0
+            gfmaterialdata.bakeconstant1 = 0
+            gfmaterialdata.bakeconstant2 = 0
+            gfmaterialdata.bakeconstant3 = 0
+            gfmaterialdata.bakeconstant4 = 0
+            gfmaterialdata.bakeconstant5 = 0
+            gfmaterialdata.vertexshadertype = 0
+            gfmaterialdata.shaderparam0 = 1
+            gfmaterialdata.shaderparam1 = 1
+            gfmaterialdata.shaderparam2 = 1
+            gfmaterialdata.shaderparam3 = 1
+            
+            texcoordcount = 0
+            #texcoord section
+            tex_image_nodes = [node for node in mat.node_tree.nodes if node.type == 'TEX_IMAGE'][:3]
+            tex_coord_nodes = [node for node in mat.node_tree.nodes if node.type == 'MAPPING'][:3]
+            gfmaterialdata.unitscount = len(tex_coord_nodes)
+            if (len(tex_coord_nodes) > 3):
+                gfmaterialdata.unitscount = 3        
+            for x in range(gfmaterialdata.unitscount):
+                newtexcoord = RGBA.__new__(RGBA)
+                newtexcoord.__init2__(255,255,255,255)
+            for x in range(len(tex_image_nodes)):           
+                #print([i.name for i in tex_coord_nodes[x].inputs])
+                #print([i.enabled for i in tex_coord_nodes[x].inputs])
+                #add materials found in tex image nodes to texture list
+                texturenames.append(tex_image_nodes[x].image.name)
+                if(tex_image_nodes[x].extension == 'CLIP'):
+                    gfmaterialdata.coords[x].wrapu = GFTextureWrap.ClampToEdge
+                    gfmaterialdata.coords[x].wrapv = GFTextureWrap.ClampToEdge
+                if(tex_image_nodes[x].extension == "REPEAT"):
+                    gfmaterialdata.coords[x].wrapu = GFTextureWrap.Repeat
+                    gfmaterialdata.coords[x].wrapv = GFTextureWrap.Repeat
+                if(tex_image_nodes[x].extension == "MIRROR"):
+                    gfmaterialdata.coords[x].wrapu = GFTextureWrap.Mirror
+                    gfmaterialdata.coords[x].wrapv = GFTextureWrap.Mirror
+            for x in range(len(tex_coord_nodes)):          
+                gfmaterialdata.coords[x].rotation = (math.degrees(tex_coord_nodes[x].inputs['Rotation'].default_value[0]))
+                #print(tex_coord_nodes[x].inputs['Location'].default_value[0])
+                # i love blender so-f-df-s-s-f- much!
+                gfmaterialdata.coords[x].translation.X = ((tex_coord_nodes[x].inputs['Location'].default_value[0])/2,)
+                gfmaterialdata.coords[x].translation.Y = ((tex_coord_nodes[x].inputs['Location'].default_value[1])/2,)            
+                gfmaterialdata.coords[x].scale.X = (tex_coord_nodes[x].inputs['Scale'].default_value[0],)
+                gfmaterialdata.coords[x].scale.Y = (tex_coord_nodes[x].inputs['Scale'].default_value[1],)
+                
+                    
+            gfmaterialdata.unitscount = int.from_bytes(file.read(4),"little")
+            
+            #tex coord matrix for vertex shaders??(idk really)
+            texmatrix = []
+            for x in range(unitscount):
+                matrix = gfmaterialdata.coords[x].gettransform()
+                texmatrix.append(matrix.a41)
+                texmatrix.append(matrix.a31)
+                texmatrix.append(matrix.a21)
+                texmatrix.append(matrix.a11)
+                texmatrix.append(matrix.a42)
+                texmatrix.append(matrix.a32)
+                texmatrix.append(matrix.a22)
+                texmatrix.append(matrix.a12)
+                texmatrix.append(matrix.a43)
+                texmatrix.append(matrix.a33)
+                texmatrix.append(matrix.a23)
+                texmatrix.append(matrix.a13)
+                
+            #will need to create new picacommands here
+            picacommands = []
+            #need to add correct texture sources but shhh
+            #around 31 commands
+            #params based off either spica or values found in models
+            #will need to update first two commands for uvmaps later
+            picacommands.append(PicaCommand(PicaRegisters(704),[2147483648],15))
+            picacommands.append(PicaCommand(PicaRegisters(705),[0],15))
+            picacommands.append(PicaCommand(PicaRegisters(706),[0],15))
+            picacommands.append(PicaCommand(PicaRegisters(707),[1065353216],15))
+            picacommands.append(PicaCommand(PicaRegisters(708),[0],15))
+            picacommands.append(PicaCommand(PicaRegisters(704),[2147483649],15))
+            if unitscount > 0:    
+                picacommands.append(PicaCommand(PicaRegisters(705),texmatrix,15))
+            picacommands.append(PicaCommand(PicaRegisters(64),[2],15))
+            picacommands.append(PicaCommand(PicaRegisters(256),[14942464],3))
+            picacommands.append(PicaCommand(PicaRegisters(257),[16842752],15))
+            picacommands.append(PicaCommand(PicaRegisters(260),[97],3))
+            picacommands.append(PicaCommand(PicaRegisters(261),[4294967057],15))
+            picacommands.append(PicaCommand(PicaRegisters(262),[512],15))
+            picacommands.append(PicaCommand(PicaRegisters(263),[8017],15))
+            picacommands.append(PicaCommand(PicaRegisters(109),[1],15))
+            picacommands.append(PicaCommand(PicaRegisters(77),[12517376],15))
+            picacommands.append(PicaCommand(PicaRegisters(273),[1],15))
+            picacommands.append(PicaCommand(PicaRegisters(272),[1],15))
+            picacommands.append(PicaCommand(PicaRegisters(274),[1],0))
+            picacommands.append(PicaCommand(PicaRegisters(275),[1],15))
+            picacommands.append(PicaCommand(PicaRegisters(276),[3],1))
+            picacommands.append(PicaCommand(PicaRegisters(277),[3],1))
+            texunitconfigbase = 12288  
+            texunitconfigbase |= (1 if unitscount > 0 else 0)
+            texunitconfigbase |= (1 if unitscount > 1 else 0)
+            texunitconfigbase |= (1 if unitscount > 2 else 0)
+            picacommands.append(PicaCommand(PicaRegisters(128),[0,0,0],0))
+            picacommands.append(PicaCommand(PicaRegisters(128),texunitconfigbase,0))
+            picacommands.append(PicaCommand(PicaRegisters(129),0,15))
+            picacommands.append(PicaCommand(PicaRegisters(145),0,15))
+            picacommands.append(PicaCommand(PicaRegisters(464),35791394,15))
+            picacommands.append(PicaCommand(PicaRegisters(465),33554432,15))
+            picacommands.append(PicaCommand(PicaRegisters(466),0,15))
+            if (len(picacommands) & 3) == 0):
+                picacommands.append(PicaCommand(PicaRegisters(0),0,0))
+            picacommands.append(PicaCommand(PicaRegisters(573),1,0))
+            gfmaterialdata.picacommands = picacommands.serialize_commands()
+            gfmaterialdata.commandslength = len(gfmaterialdata.picacommands) << 2
+            gfmaterialdata.renderpriority = 0
+            fnv = GFNV1.GFNV1()
+            fnv.HASH(ctypes.c_uint32((len(gfmaterialdata.picacommands) + len(picacommands)).to_bytes(4, 'little')))
+            #this hash is special..
+            gfmaterialdata.materialhash = pow((fnv.hashcode >> 24),(fnv.hashcode & 0x00FFFFFF))
+            #should be constant
+            gfmaterialdata.reflectionidk = 3441483069
+            #still undocumented
+            gfmaterialdata.reflectionr = newconstcolor
+            gfmaterialdata.reflectiong = newconstcolor
+            gfmaterialdata.reflectionb = newconstcolor
+            #end of commands section
+            
+            
+    newmaterialnames = GFHashName.__new__(GFHashName)
+    newmaterialnames.__init2__(materialnames) 
+    gfmodeldata.materialnames = newmaterialnames
+    newtexturenames = GFHashName.__new__(GFHashName)
+    newtexturenames.__init2__(texturenames) 
+    gfmodeldata.texturenames = newtexturenames
+    newshadernames = GFHashName.__new__(GFHashName)
+    newshadernames.__init2__(shadernames) 
+    gfmodeldata.shadernames = shadernames
+    
+    #create gfbones
+        for obj in coll.objects:
+            if obj.type == 'ARMATURE':
+                arm = obj.data
+                for bone in arm.bones:
+                    print(bone.name)                      
+                    if bone.parent == None:
+                        tempnewGFBone = GFBone.__new__(GFBone)
+                        translationvec = bone.head
+       
+                        rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
+                        full_matrix = Matrix.Translation(translationvec) @ rotation
+                        tempnewGFBone.__init2__(bone.name,"placeholder",1.0,1.0,1.0,bone.matrix.to_euler('XYZ').x,bone.matrix.to_euler('XYZ').y,bone.matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
+                        newgfbones.append(tempnewGFBone)
+                    else:
+                        key = arm.bones.find(bone.parent.name)
+                        if(key != -1):
+                            parentbone = arm.bones[bone.parent.name]
+                        newmat = parentbone.matrix.inverted() @ bone.matrix
+                        translationvec = bone.head
+                        parenttranslationvec = parentbone.head
+                        
+                        rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
+                        full_matrix = Matrix.Translation(translationvec) @ rotation
+                        parent_matrix = parentbone.matrix.to_4x4()
+                        parent_matrix = Matrix.Translation(parenttranslationvec) @ parent_matrix 
+                        #full_matrix = full_matrix @ parent_matrix.inverted() 
+                        tempnewGFBone = GFBone.__new__(GFBone)
+                        #placeholder for scale which seemling has no way to get back?
+                        #translation values are swapped for blenders y up -> z up system??
+                        #or not i give up
+                        tempnewGFBone.__init2__(bone.name,parentbone.name,1.0,1.0,1.0,full_matrix.to_euler('XYZ').x,full_matrix.to_euler('XYZ').y,full_matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
+                        newgfbones.append(tempnewGFBone)
+        gfmodeldata.GFBones = newgfbones
+        gfmodeldata.bonescount = len(newgfbones)
+        
+        gfmodeldata.lutsCount = 0
+        gfmodeldata.lutslength = 0
+        
+        #create new hashnames for new meshes
+        meshnamelist = []
+        for obj in coll.objects:
+            if obj.type == 'MESH':
+                #making sure submeshes aren't included
+                if not ('.' in obj.name):
+                    meshnamelist.append(obj.name)              
+        newmeshnames = GFHashName.__new__(GFHashName)
+        newmeshnames.__init2__(meshnamelist) 
+        gfmodeldata.meshnames = newmeshnames
+        
+        #create new meshes
+        for obj in coll.objects:
+            newmeshes = []
+            submsh_idx = 0
+            if obj.type == 'MESH':
+                mesh = obj
+                ogmesh = None
+                submeshesfound = []
+                newgfmesh = GFMesh.__new__(GFMesh)
+
+                        #ogmesh = gfmodeldata.GFMeshes[x]
+                #check to make sure it's not actually a submesh
+                if (obj.name in submeshesfound) == False:
+                    newgfmesh.namestr = obj.name
+                    hasher = GFNV1()
+                    hasher.hashstring(obj.name)
+                    newgfmesh.namehash = (hasher.hashcode.value).to_bytes(4, 'little')
+                    submeshesfound.append(obj.name)
+                    blendersubmeshes = [node for node in coll.objects if node.type == 'MESH' and obj.name in node.name]
+                    newgfmesh.submeshescount = len(blendersubmeshes)
+                
+                #convoluted way to obtain the correct value for boneindicespervertex
+                areallweightssame = True
+                if obj.vertex_groups:
+                    maxcount = 0
+                    firstweight = obj.data.vertices[0].groups[0].weight
+                    secondweight = obj.data.vertices[0].groups[1].weight
+                    thirdweight = obj.data.vertices[0].groups[2].weight
+                    fourthweight = obj.data.vertices[0].groups[3].weight
+                    for v in obj.data.vertices:
+                        count = 0
+                        groupindex = 0
+                        for g in v.groups:
+                            weight = g.weight  
+                            if (weight != obj.data.vertices[0].groups[groupindex].weight):
+                                areallweightssame = False
+                            if (weight > 0):
+                                count = count + 1
+                            groupindex = groupindex + 1
+                                
+                        if count > maxcount:
+                            maxcount = count
+                            
+                areallindicessame = True
+                if obj.vertex_groups:
+                    firstgroup = obj.data.vertices[0].groups[0].group
+                    secondgroup = obj.data.vertices[0].groups[0].group
+                    thirdgroup = obj.data.vertices[0].groups[0].group
+                    fourthgroup = obj.data.vertices[0].groups[0].group
+                    for v in obj.data.vertices:
+                        firstgroup = v.groups[0]
+                        for g in v.groups:
+                            if (g.group != firstgroup):
+                                areallindicessame = False
+                                break 
+                                
+                 
+                    newgfmesh.boneindicespervertex = maxcount
+                    #set mesh commands
+                    for x in range(newgfmesh.submeshescount):
+                        #make new commands for each
+                        tempnewGFMeshCommand = GFMeshCommands.__new__(GFMeshCommands)
+                        #enable commands
+                        bufferformats = 0
+                        bufferattributes = 0
+                        bufferpermutation = 0
+                        attributestotal = 0
+                        attributes = []
+                        fixedattributes = []
+                        #very long if statement to determine attributes
+                        if gfmodeldata.bonescount == 0:
+                            boneindexfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                            #7 is bone index(set to 0 for meshes w/o )
+                            boneindexfixedattribute.name = PicaAttributeName(7)
+                            boneindexfixedattribute.value = PicaVectorFloat24()
+        
+                            boneweightfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                            #8 is bone weight
+                            boneweightfixedattribute.name = PicaAttributeName(8)
+                            boneweightfixedattribute.value = PicaVectorFloat24()
+                            boneweightfixedattribute.value.setx(0.0)
+                            boneweightfixedattribute.value.sety(0.003921568)
+                            boneweightfixedattribute.value.setz(0.007843137)
+                            boneweightfixedattribute.value.setw(0.01176465)
+                        else:
+                            if areallweightssame:
+                                boneindexfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                                #7 is bone index
+                                boneindexfixedattribute.name = PicaAttributeName(7)
+                                boneindexfixedattribute.value = PicaVectorFloat24()
+                                boneindexfixedattribute.value.setx(firstweight)
+                                boneindexfixedattribute.value.sety(secondweight)
+                                boneindexfixedattribute.value.setz(thirdweight)
+                                boneindexfixedattribute.value.setw(fourthweight)
+                            if areallindicessame:
+                                boneweightfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                                #8 is bone weight
+                                boneweightfixedattribute.name = PicaAttributeName(8)
+                                boneweightfixedattribute.value = PicaVectorFloat24()
+                                boneweightfixedattribute.value.setx(firstgroup)
+                                boneweightfixedattribute.value.sety(secondgroup)
+                                boneweightfixedattribute.value.setz(thirdgroup)
+                                boneweightfixedattribute.value.setw(fourthgroup)
+                                
+                            nouv0 = (obj.data.uv_layers.find("UVMap0") == -1)
+                            nouv1 = (obj.data.uv_layers.find("UVMap1") == -1)
+                            nouv2 = (obj.data.uv_layers.find("UVMap2") == -1)
+                            if nouv0:
+                                texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                                #4 is texcoord0
+                                texcoordfixedattribute.name = PicaAttributeName(4)
+                                texcoordfixedattribute.value = PicaVectorFloat24()
+                                texcoordfixedattribute.value.setx(0.0)
+                                texcoordfixedattribute.value.sety(0.0)
+                                texcoordfixedattribute.value.setz(0.0)
+                                texcoordfixedattribute.value.setw(1.0)
+                            if nouv1:
+                                texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                                #5 is texcoord1
+                                texcoordfixedattribute.name = PicaAttributeName(5)
+                                texcoordfixedattribute.value = PicaVectorFloat24()
+                                texcoordfixedattribute.value.setx(0.0)
+                                texcoordfixedattribute.value.sety(0.0)
+                                texcoordfixedattribute.value.setz(0.0)
+                                texcoordfixedattribute.value.setw(1.0)
+                            if nouv2:
+                                texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                                #6 is texcoord2
+                                texcoordfixedattribute.name = PicaAttributeName(6)
+                                texcoordfixedattribute.value = PicaVectorFloat24()
+                                texcoordfixedattribute.value.setx(0.0)
+                                texcoordfixedattribute.value.sety(0.0)
+                                texcoordfixedattribute.value.setz(0.0)
+                                texcoordfixedattribute.value.setw(1.0)
+                            #you will have no choice for tangents for now
+                            tanfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                            #6 is texcoord2
+                            tanfixedattribute.name = PicaAttributeName(6)
+                            tanfixedattribute.value = PicaVectorFloat24()
+                            tanfixedattribute.value.setx(0.0)
+                            tanfixedattribute.value.sety(0.0)
+                            tanfixedattribute.value.setz(0.0)
+                            tanfixedattribute.value.setw(1.0)
+                        
+                        newgfmesh.GFMeshCommandses.append(tempnewGFMeshCommand)
+                    
+                    #change index commands that need to update
+                    for x in range(newgfmesh.submeshescount):
+                        indexcommands = newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands
+                        print(indexcommands)
+                        picacommands = PicaCommandReader(indexcommands)
+                        for x in range(len(picacommands.commands)):
+                            if(picacommands.commands[x].register.name == "GPUREG_NUMVERTICES"):
+                                picacommands.commands[x].parameters[0] = len(obj.data.polygons)*3
+                            if(picacommands.commands[x].register.name == "GPUREG_INDEXBUFFER_CONFIG"):
+                                picacommands.commands[x].parameters[0] = 0x81999999
+                         
+                        #set to new commands
+                        newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands = picacommands.serialize_commands()
+                        print("commandlength")
+                        print(len(newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands))
+                        newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commandslength = (len(newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands))*4 
+                    
+                    #recreate rawbuffer and indices
+                    print(len(blendersubmeshes))
+                    repackvertexdata(blendersubmeshes, newgfmesh, gfmodeldata.GFBones)
+                    repackindices(blendersubmeshes, newgfmesh)
+                
+                submsh_idx = submsh_idx + 1
+    
 def write_model_section(f, model_data):
     # Write section identifier (GFMO)
     f.write(b'GFMO\x00\x00\x00\x00')

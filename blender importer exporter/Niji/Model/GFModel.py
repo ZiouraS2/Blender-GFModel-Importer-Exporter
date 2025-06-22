@@ -1,5 +1,7 @@
 import os
 import sys
+import ctypes
+import bpy
 from . import helperfunctions
 from . import GFSection
 from . import GFHashName
@@ -67,11 +69,81 @@ class GFModel(object):
             
             
         else:
-            print("incorrect file header found")
-            
-    def __init__(self,file):
+            print("incorrect file header found")  
+     
+    def __init__(self,file,name):
         self.file = file
+        self.name = name
         self.readModel(file)
+       
+        
+        
+    def writeModel(self,f,collection):  
+        f.write(b'\x17\x21\x12\x15')
+        f.write((len(self.GFMaterials)+len(self.GFMeshes)+1).to_bytes(4, byteorder='little'))
+        #padding
+        f.write(bytes(8))
+        #placeholder(will write gfsection here after we know the length of the bones section (possec1start - possec1end))
+        f.write(bytes(16))
+        possec1start = f.tell()
+        print(possec1start)
+        
+        #hashnames section
+        self.shadernames.writeHashName(f)
+        
+        self.texturenames.writeHashName(f)
+         
+        self.materialnames.writeHashName(f)
+         
+        self.meshnames.writeHashName(f)
             
-            
-    
+        #
+        self.boundingboxminvector.writeVec4(f)
+        self.boundingboxmaxvector.writeVec4(f)
+        self.transformmatrix.writeMatrix4x4(f)
+        #constant section?
+        f.write(b'\x00\x00\x00\x00')
+        f.write(b'\x10\x00\x00\x00')
+        f.write(b'\x00\x00\x00\x00')
+        f.write(b'\x00\x00\x00\x00')
+        f.write(b'\x00\x00\x00\x00')
+        f.write(b'\x00\x00\x00\x00')
+        f.write(b'\x00\x00\x00\x00')
+        f.write(b'\x00\x00\x00\x00')
+        
+        #gfbones section
+        print("gfbones count")
+        print(len(self.GFBones))
+        f.write(self.bonescount.to_bytes(4, 'little'))
+        f.write(bytes(12))
+        for i in range(self.bonescount):
+            self.GFBones[i].writebone(f)
+ 
+ 
+        helperfunctions.skippadding3(f)
+        
+        #gfluts
+        f.write(self.lutsCount.to_bytes(4, 'little'))
+        f.write(self.lutslength.to_bytes(4, 'little'))
+        helperfunctions.skippadding3(f)
+        for i in range(self.lutsCount):
+            self.GFLUTS[i].writelut(f)
+        
+        #where the gfsection ends
+        possec1end = f.tell()
+        print(possec1end)
+        f.seek(possec1start - 16)
+        #write gfsection
+        
+        print(GFSection.GFSection)
+        newGFSection = GFSection.GFSection.__new__(GFSection.GFSection)
+        newGFSection.__init2__("gfmodel",(possec1end - possec1start))
+        newGFSection.writenewsection(f)
+        f.seek(possec1end)    
+        for i in range(self.materialnames.numofhashes):
+            print()
+            self.GFMaterials[i].writematerial(f)
+        
+        for i in range(self.meshnames.numofhashes):
+            print()
+            self.GFMeshes[i].writeMesh(f)
