@@ -163,6 +163,7 @@ class GFMesh(object):
                 print(attrib.name)
                 if(attrib.name == "BoneIndex"):
                     attrib.scale = 1
+                print(attrib.scale)
                     
                 
                 submesh.attributes.append(attrib)

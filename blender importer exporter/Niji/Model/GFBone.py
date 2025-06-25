@@ -25,6 +25,10 @@ class GFBone(object):
             self.TranslationX = struct.unpack('f',file.read(4))
             self.TranslationY = struct.unpack('f',file.read(4))
             self.TranslationZ = struct.unpack('f',file.read(4))
+            print(self.bonename)
+            print(self.TranslationX)
+            print(self.TranslationY)
+            print(self.TranslationZ)
             
         
 
@@ -70,7 +74,14 @@ class GFBone(object):
                 f.write(self.boneparentname.encode("utf-8"))
             else:
                 pad = 0
-                f.write(pad.to_bytes(1, 'little'))
+                f.write(pad.to_bytes(1, 'little'))             
+            print(self.bonename)
+            print(self.TranslationX)
+            print(self.TranslationY)
+            print(self.TranslationZ)
+            print(self.RotationX)
+            print(self.RotationY)
+            print(self.RotationZ)
             f.write(self.boneflag)
             f.write(struct.pack('f',self.ScaleX))
             f.write(struct.pack('f',self.ScaleY))

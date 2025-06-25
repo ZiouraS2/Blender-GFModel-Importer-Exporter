@@ -27,3 +27,9 @@ class GFMeshCommands(object):
     
     def __init__(self,file):
         self.readGFMeshCommands(file)
+        
+    def __init2__(self,commandslength,commandsindex,commandscount,commands):
+        self.commandslength = commandslength
+        self.commandsindex = commandsindex
+        self.commandscount = commandscount
+        self.commands = commands

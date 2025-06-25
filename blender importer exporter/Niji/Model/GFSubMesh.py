@@ -27,7 +27,9 @@ class GFSubMeshPart1(object):
             f.write(self.stringlength.to_bytes(4, 'little'))
             f.write(self.submeshname.encode("utf-8"))
             f.write(self.boneindicescount.to_bytes(1, 'little'))
+            print(self.boneindices)
             for x in range(31):
+                print(x)
                 f.write(self.boneindices[x].to_bytes(1, 'little'))
             f.write(self.verticescount.to_bytes(4, 'little'))
             f.write(self.indicescount.to_bytes(4, 'little'))

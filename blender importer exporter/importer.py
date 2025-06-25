@@ -187,6 +187,8 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
             
         my_coll = bpy.data.collections.new(model_name)
         bpy.context.scene.collection.children.link(my_coll)
+        
+
         # Select all created objects
     
 
@@ -199,6 +201,8 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
             for other_col in armature.users_collection:
                 other_col.objects.unlink(armature)
             my_coll.objects.link(armature)
+
+
             
         
         if created_objects:
@@ -406,45 +410,65 @@ def create_armature(gfmodel, model_name):
             bone_name = gfbone.bonename.strip('\x00')
         
         bone = arm_data.edit_bones.new(bone_name)
+        #bone.use_connect = False
         #bone.use_inherit_rotation = True
         
         #create matrix based on bone positions(which are relative to parent positions)
-        bone_matrix = mathutils.Matrix.LocRotScale((gfbone.TranslationX[0],gfbone.TranslationY[0], gfbone.TranslationZ[0]),mathutils.Euler((gfbone.RotationX[0],gfbone.RotationY[0],gfbone.RotationZ[0]), 'XYZ'),(gfbone.ScaleX[0],gfbone.ScaleY[0], gfbone.ScaleZ[0]))
-        bone.matrix = bone_matrix
+        bone_matrix = mathutils.Matrix.LocRotScale((round(gfbone.TranslationX[0],6),round(gfbone.TranslationY[0],6), round(gfbone.TranslationZ[0],6)),mathutils.Euler((round(gfbone.RotationX[0],6),round(gfbone.RotationY[0],6),round(gfbone.RotationZ[0],6)), 'XYZ'),(gfbone.ScaleX[0],gfbone.ScaleY[0], gfbone.ScaleZ[0]))
+        
       
         #make tail slightly bigger so blender no delete
         bone.head = (0,0,0)
-        bone.tail = (0,0,0.1)
+        bone.tail = (0,0,0.001)
+        
+        
         
         if(gfbone.boneparentname != "placeholder"):
             key = arm_obj.data.edit_bones.find(gfbone.boneparentname)
             if(key != -1):
                 parentbone = arm_obj.data.edit_bones[gfbone.boneparentname]
+            else:
+                bone.matrix = bone_matrix
+            bone.parent = parentbone
+            #bone.head = parentbone.tail
             bone.matrix = parentbone.matrix @ bone_matrix
+            reversematrix = parentbone.matrix.inverted() @ bone.matrix
+            print("gfmdl bone location")
+            print("gfmdl bone location")
+            print(gfbone.bonename)
+            np.set_printoptions(precision=10, suppress=False)
+            print(bone_matrix)
+            print(np.array(bone.matrix))
+            print(parentbone.matrix)
+            print(parentbone.matrix.inverted())
+            print(reversematrix)
+            
+      
+
         
-       
-        print("gfmdl bone location")
-        print(gfbone.bonename)
-        print(bone.matrix)
         
-        
-        #bone.use_connect = True
+
 
                       
         # Store the bone for later use
         bones[bone_name] = bone
         
-    #find parent after all bones have actually been added
-    for i, bonename in enumerate(bones):
-            bone = bones[bonename]
-            gfbone = gfmodel.GFBones[i]
-            key = arm_obj.data.edit_bones.find(gfbone.boneparentname)
-            if(key != -1):
-                bone.parent = arm_obj.data.edit_bones[gfbone.boneparentname]
+
+
+                
             
     # Exit edit mode
     bpy.ops.object.mode_set(mode='OBJECT')
-    
+    for x in bpy.context.collection.objects:    
+        if x.type == 'ARMATURE':
+            for bone in x.data.bones:
+                print("after exit edit")
+                print(bone.name)  
+                np.set_printoptions(precision=10, suppress=False)
+                print(np.array(bone.matrix_local.to_4x4()))
+                if bone.parent is not None:
+                    print(np.array(bone.parent.matrix_local.to_4x4().inverted() @ bone.matrix_local.to_4x4()))
+
 
     
     return arm_obj

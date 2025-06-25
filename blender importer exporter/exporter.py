@@ -28,6 +28,14 @@ from Niji.Model.PicaAttributeFormat import PicaAttributeFormat
 from Niji.Model.PicaAttribute import PicaAttribute
 from Niji.Model.PicaFixedAttribute import PicaFixedAttribute
 
+#for model bounding box
+maxx = 0
+maxy = 0
+maxz = 0
+minx = 0
+miny = 0
+minz = 0
+
 def save_gfmdl(filepath, objects):
     print(f"Exporting to: {filepath}")
     model_name = os.path.basename(filepath).rsplit('.', 1)[0].replace(".PSSG", "")
@@ -68,8 +76,9 @@ def save_gfmdl(filepath, objects):
                 print("no match found this time")
     
     
+    
     #Create a new GFModel
-    if(gfmodeldata == None):
+    if(gfmodeldata != None):
         print("unsupported")
         gfmodel = recreate_gfmodel_data(currcoll, gfmodeldata)
     else:
@@ -93,6 +102,20 @@ def _f(seq):
         return [x for x in seq if x not in seen and not seen.add(x)]    
         
 def repackvertexdata(submeshes, gfmeshdata, gfbones):
+    #for mesh boundinb box(which is unused on pokemon models??)
+    global maxx
+    global maxy
+    global maxz
+    global minx
+    global miny
+    global minz
+    
+    meshmaxx = 0
+    meshmaxy = 0
+    meshmaxz = 0
+    meshminx = 0
+    meshminy = 0
+    meshminz = 0
     for x1 in range(len(submeshes)):
         currsubmesh = submeshes[x1]
         # note, not all submeshes will ahve all of these so not all of them will be used
@@ -114,6 +137,7 @@ def repackvertexdata(submeshes, gfmeshdata, gfbones):
         verticeslength = gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.verticeslength
         boneindices = []
         submesh_name2 = gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.submeshname.strip('\x00')
+        
     
         newrawbuffer = io.BytesIO()
     
@@ -169,6 +193,21 @@ def repackvertexdata(submeshes, gfmeshdata, gfbones):
                     float(x) / attr.scale
                     float(y) / attr.scale
                     float(z) / attr.scale
+                    #bounding box calc
+                    if x > meshmaxx:
+                        meshmaxx = x
+                    if y > meshmaxy:
+                        meshmaxy = y
+                    if z > meshmaxz:
+                        meshmaxz = z
+                    if x < meshminx:
+                        meshminx = x
+                    if y < meshminy:
+                        meshminy = y
+                    if z < meshminz:
+                        meshminz = z
+                    
+                    
                     values.append((x, y, z))
                 
                 # Add normal if available
@@ -212,30 +251,37 @@ def repackvertexdata(submeshes, gfmeshdata, gfbones):
                         boneweights.append(float(0))
                     values.append(boneweights)
                 if attr_name == 'boneindex':
+                    boneindicesindex = []
                     for group in currsubmesh.data.vertices[v_idx].groups:
                         #blender bone index name
                         name = currsubmesh.vertex_groups[group.group].name
                         #match up to gfbone order which(might?) not be the same
                         #also updating boneindices because the buffere references the index of the boneindices instead of just the bones(convoluted)
                         #this also means you can't have more than 31 bones acting on said submesh as a result
-                        boneindicesindex = []
                         index = 0
                         for x in range(len(gfbones)):
                             if gfbones[x].bonename == name:
                                 index = x 
                                 #indices are added in order found in buffer? doesn't really matter anyway as long as the boneindice and buffer index to boneindices are consistent
-                                if (index not in boneindices) and (len(boneindices) < 31):
-                                    boneindices.append(index)
-                                    boneindicesindex.append(len(boneindices))
+                                if (index not in boneindices):
+                                    if(len(boneindices) < 31):
+                                        boneindices.append(index)
+                                    
+                                        boneindicesindex.append(len(boneindices)-1)
                                 else:
-                                    for x in range(len(boneindices)):
-                                        if (boneindices[x] == index) and (len(boneindices) < 31):
+                                    for x in range(len(boneindices)):      
+                                        if (boneindices[x] == index):                                       
                                            boneindicesindex.append(x)
-                    # add the weights that are zero for stuff that got deleted?
+                                           if v_idx < 3:
+                                                print("appened x to boneindicesindex")
+                                                print(x )
+                                                print(boneindicesindex)
+                    # add the weights that are zero for 4 boneindices
                     #should be 0th element for said submeshes boneindex, not just 0 overall
                     for x in range(4 - len(boneindicesindex)):
-                        boneindicesindex.append(0)
+                        boneindicesindex.append(0xFF)
                     values.append(boneindicesindex)
+                
             
                 # Read the elements for this attribute
                 for e in range(attr.elements):
@@ -265,7 +311,24 @@ def repackvertexdata(submeshes, gfmeshdata, gfbones):
             if v_idx == 0:
                 #length of each vertex in bytes
                 vertexstride = len(newrawbuffer.getvalue())
-        print(x1)
+                
+        for x in range(31 - len(boneindices)):
+            boneindices.append(0)
+        # doing nothing for fixattr for now they will jsut remain as they were for said model
+        for fixattr in fixedattributes:
+            fixattrname = fixattr.name.name.lower()
+            #put first boneindex in boneindices for first attribute
+            name = currsubmesh.vertex_groups[0].name
+            for x in range(len(gfbones)):
+                if gfbones[x].bonename == name:
+                    index = x
+            if (fixattrname == "boneindex"):
+                boneindices[0] = index
+            
+        print("end submesh boneindices")
+        print(submesh_name2)
+        print(boneindices)
+        print(len(boneindices))
         gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart2.rawbuffer = None
         gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart2.rawbuffer = newrawbuffer
         
@@ -273,10 +336,22 @@ def repackvertexdata(submeshes, gfmeshdata, gfbones):
         gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.verticeslength = len(newrawbuffer.getvalue())
         
         gfmeshdata.GFSubMeshes.GFSubMeshes[x1].gfsubmeshpart1.boneindices = boneindices
-    # add attributes from fixed attributes:
-    # doing nothing for fixattr for now they will jsut remain as they were for said model
-    for fixattr in fixedattributes:
-        fixattrname = fixattr.name.name.lower()
+    
+    #bounding box model calc
+    if meshmaxx > maxx:
+        maxx = meshmaxx
+    if meshmaxy > maxy:
+        maxy = meshmaxy
+    if meshmaxz > maxz:
+        maxz = meshmaxz
+    if minx > meshminx:
+        minx = meshminx
+    if miny > meshminy:
+        miny = meshminy
+    if minz > meshminz:
+        minz = meshminz
+    
+    
    
    
 
@@ -312,9 +387,12 @@ def recreate_gfmodel_data(coll, gfmodel):
         
         newgfbones = []
         #re-create gfbones
+        
         for obj in coll.objects:
             if obj.type == 'ARMATURE':
                 arm = obj.data
+                print("length bones") 
+                print(len(arm.bones)) 
                 for bone in arm.bones:
                     print(bone.name)                      
                     if bone.parent == None:
@@ -330,20 +408,29 @@ def recreate_gfmodel_data(coll, gfmodel):
                         if(key != -1):
                             parentbone = arm.bones[bone.parent.name]
                         newmat = parentbone.matrix.inverted() @ bone.matrix
-                        translationvec = bone.head
-                        parenttranslationvec = parentbone.head
+                        translationvec = bone.head_local
+                        parenttranslationvec = parentbone.head_local
+                        diffvec = translationvec - parenttranslationvec
                         
-                        rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
+                        
+                        rotation = bone.matrix_local.to_4x4()  # convert 3x3 to 4x4
+                        parentrotation = parentbone.matrix_local.to_4x4() 
                         full_matrix = Matrix.Translation(translationvec) @ rotation
-                        parent_matrix = parentbone.matrix.to_4x4()
-                        parent_matrix = Matrix.Translation(parenttranslationvec) @ parent_matrix 
-                        #full_matrix = full_matrix @ parent_matrix.inverted() 
+                        parent_matrix = Matrix.Translation(parenttranslationvec) @ parentrotation
+                        combmatrix = parentrotation.inverted() @ rotation
+                              
+                              
+                        print(rotation) 
+                        print(parentrotation) 
+                        print(combmatrix) 
+
                         tempnewGFBone = GFBone.__new__(GFBone)
                         #placeholder for scale which seemling has no way to get back?
                         #translation values are swapped for blenders y up -> z up system??
                         #or not i give up
-                        tempnewGFBone.__init2__(bone.name,parentbone.name,1.0,1.0,1.0,full_matrix.to_euler('XYZ').x,full_matrix.to_euler('XYZ').y,full_matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
+                        tempnewGFBone.__init2__(bone.name,parentbone.name,1.0,1.0,1.0,combmatrix.to_euler('XYZ').x,combmatrix.to_euler('XYZ').y,combmatrix.to_euler('XYZ').z,combmatrix.to_translation().x,combmatrix.to_translation().y,combmatrix.to_translation().z)
                         newgfbones.append(tempnewGFBone)
+     
         gfmodel.GFBones = newgfbones
         gfmodel.bonescount = len(newgfbones)
                         
@@ -616,7 +703,7 @@ def create_new_gfmodel_data(coll):
             picacommands.append(PicaCommand(PicaRegisters(464),35791394,15))
             picacommands.append(PicaCommand(PicaRegisters(465),33554432,15))
             picacommands.append(PicaCommand(PicaRegisters(466),0,15))
-            if (len(picacommands) & 3) == 0):
+            if ((len(picacommands)&3) == 0):
                 picacommands.append(PicaCommand(PicaRegisters(0),0,0))
             picacommands.append(PicaCommand(PicaRegisters(573),1,0))
             gfmaterialdata.picacommands = picacommands.serialize_commands()
@@ -646,38 +733,38 @@ def create_new_gfmodel_data(coll):
     gfmodeldata.shadernames = shadernames
     
     #create gfbones
-        for obj in coll.objects:
-            if obj.type == 'ARMATURE':
-                arm = obj.data
-                for bone in arm.bones:
-                    print(bone.name)                      
-                    if bone.parent == None:
-                        tempnewGFBone = GFBone.__new__(GFBone)
-                        translationvec = bone.head
-       
-                        rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
-                        full_matrix = Matrix.Translation(translationvec) @ rotation
-                        tempnewGFBone.__init2__(bone.name,"placeholder",1.0,1.0,1.0,bone.matrix.to_euler('XYZ').x,bone.matrix.to_euler('XYZ').y,bone.matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
-                        newgfbones.append(tempnewGFBone)
-                    else:
-                        key = arm.bones.find(bone.parent.name)
-                        if(key != -1):
-                            parentbone = arm.bones[bone.parent.name]
-                        newmat = parentbone.matrix.inverted() @ bone.matrix
-                        translationvec = bone.head
-                        parenttranslationvec = parentbone.head
-                        
-                        rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
-                        full_matrix = Matrix.Translation(translationvec) @ rotation
-                        parent_matrix = parentbone.matrix.to_4x4()
-                        parent_matrix = Matrix.Translation(parenttranslationvec) @ parent_matrix 
-                        #full_matrix = full_matrix @ parent_matrix.inverted() 
-                        tempnewGFBone = GFBone.__new__(GFBone)
-                        #placeholder for scale which seemling has no way to get back?
-                        #translation values are swapped for blenders y up -> z up system??
-                        #or not i give up
-                        tempnewGFBone.__init2__(bone.name,parentbone.name,1.0,1.0,1.0,full_matrix.to_euler('XYZ').x,full_matrix.to_euler('XYZ').y,full_matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
-                        newgfbones.append(tempnewGFBone)
+    for obj in coll.objects:
+        if obj.type == 'ARMATURE':
+            arm = obj.data
+            for bone in arm.bones:
+                print(bone.name)                      
+                if bone.parent == None:
+                    tempnewGFBone = GFBone.__new__(GFBone)
+                    translationvec = bone.head
+   
+                    rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
+                    full_matrix = Matrix.Translation(translationvec) @ rotation
+                    tempnewGFBone.__init2__(bone.name,"placeholder",1.0,1.0,1.0,bone.matrix.to_euler('XYZ').x,bone.matrix.to_euler('XYZ').y,bone.matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
+                    newgfbones.append(tempnewGFBone)
+                else:
+                    key = arm.bones.find(bone.parent.name)
+                    if(key != -1):
+                        parentbone = arm.bones[bone.parent.name]
+                    newmat = parentbone.matrix.inverted() @ bone.matrix
+                    translationvec = bone.head
+                    parenttranslationvec = parentbone.head
+                    
+                    rotation = bone.matrix.to_4x4()  # convert 3x3 to 4x4
+                    full_matrix = Matrix.Translation(translationvec) @ rotation
+                    parent_matrix = parentbone.matrix.to_4x4()
+                    parent_matrix = Matrix.Translation(parenttranslationvec) @ parent_matrix 
+                    #full_matrix = full_matrix @ parent_matrix.inverted() 
+                    tempnewGFBone = GFBone.__new__(GFBone)
+                    #placeholder for scale which seemling has no way to get back?
+                    #translation values are swapped for blenders y up -> z up system??
+                    #or not i give up
+                    tempnewGFBone.__init2__(bone.name,parentbone.name,1.0,1.0,1.0,full_matrix.to_euler('XYZ').x,full_matrix.to_euler('XYZ').y,full_matrix.to_euler('XYZ').z,full_matrix.to_translation().x,full_matrix.to_translation().y,full_matrix.to_translation().z)
+                    newgfbones.append(tempnewGFBone)
         gfmodeldata.GFBones = newgfbones
         gfmodeldata.bonescount = len(newgfbones)
         
@@ -739,124 +826,305 @@ def create_new_gfmodel_data(coll):
                             maxcount = count
                             
                 areallindicessame = True
-                if obj.vertex_groups:
-                    firstgroup = obj.data.vertices[0].groups[0].group
-                    secondgroup = obj.data.vertices[0].groups[0].group
-                    thirdgroup = obj.data.vertices[0].groups[0].group
-                    fourthgroup = obj.data.vertices[0].groups[0].group
-                    for v in obj.data.vertices:
-                        firstgroup = v.groups[0]
-                        for g in v.groups:
-                            if (g.group != firstgroup):
-                                areallindicessame = False
-                                break 
-                                
-                 
-                    newgfmesh.boneindicespervertex = maxcount
-                    #set mesh commands
-                    for x in range(newgfmesh.submeshescount):
-                        #make new commands for each
-                        tempnewGFMeshCommand = GFMeshCommands.__new__(GFMeshCommands)
-                        #enable commands
-                        bufferformats = 0
-                        bufferattributes = 0
-                        bufferpermutation = 0
-                        attributestotal = 0
-                        attributes = []
-                        fixedattributes = []
-                        #very long if statement to determine attributes
-                        if gfmodeldata.bonescount == 0:
+                firstgroup = obj.data.vertices[0].groups[0].group
+                secondgroup = obj.data.vertices[0].groups[0].group
+                thirdgroup = obj.data.vertices[0].groups[0].group
+                fourthgroup = obj.data.vertices[0].groups[0].group
+                for v in obj.data.vertices:
+                    firstgroup = v.groups[0]
+                    for g in v.groups:
+                        if (g.group != firstgroup):
+                            areallindicessame = False
+                            break 
+                            
+             
+                newgfmesh.boneindicespervertex = maxcount
+                newgfmesh.commandscount = newgfmesh.submeshescount*3
+                #create new attributes and meshcommands
+                for x in range(newgfmesh.submeshescount):
+                    #make new commands for each
+                    tempnewGFMeshCommand = GFMeshCommands.__new__(GFMeshCommands)
+                    #enable commands
+                    attributes = []
+                    fixedattributes = []
+                    #very long if statement to determine attributes
+                    nouv0 = (obj.data.uv_layers.find("UVMap0") == -1)
+                    nouv1 = (obj.data.uv_layers.find("UVMap1") == -1)
+                    nouv2 = (obj.data.uv_layers.find("UVMap2") == -1)
+                    if gfmodeldata.bonescount == 0:
+                        boneindexfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                        #7 is bone index(set to 0 for meshes w/o )
+                        boneindexfixedattribute.name = PicaAttributeName(7)
+                        boneindexfixedattribute.value = PicaVectorFloat24()
+                        fixedattributes.append(boneindexfixedattribute)
+    
+                        boneweightfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                        #8 is bone weight
+                        boneweightfixedattribute.name = PicaAttributeName(8)
+                        boneweightfixedattribute.value = PicaVectorFloat24()
+                        boneweightfixedattribute.value.setx(0.0)
+                        boneweightfixedattribute.value.sety(0.003921568)
+                        boneweightfixedattribute.value.setz(0.007843137)
+                        boneweightfixedattribute.value.setw(0.01176465)
+                        fixedattributes.append(boneweightfixedattribute)
+                    else:
+                        if areallweightssame == False:
                             boneindexfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
-                            #7 is bone index(set to 0 for meshes w/o )
+                            #7 is bone index
                             boneindexfixedattribute.name = PicaAttributeName(7)
                             boneindexfixedattribute.value = PicaVectorFloat24()
-        
+                            boneindexfixedattribute.value.setx(firstweight)
+                            boneindexfixedattribute.value.sety(secondweight)
+                            boneindexfixedattribute.value.setz(thirdweight)
+                            boneindexfixedattribute.value.setw(fourthweight)
+                            fixedattributes.append(boneindexfixedattribute)
+                        if areallindicessame == False:
                             boneweightfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
                             #8 is bone weight
                             boneweightfixedattribute.name = PicaAttributeName(8)
                             boneweightfixedattribute.value = PicaVectorFloat24()
-                            boneweightfixedattribute.value.setx(0.0)
-                            boneweightfixedattribute.value.sety(0.003921568)
-                            boneweightfixedattribute.value.setz(0.007843137)
-                            boneweightfixedattribute.value.setw(0.01176465)
-                        else:
-                            if areallweightssame:
-                                boneindexfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
-                                #7 is bone index
-                                boneindexfixedattribute.name = PicaAttributeName(7)
-                                boneindexfixedattribute.value = PicaVectorFloat24()
-                                boneindexfixedattribute.value.setx(firstweight)
-                                boneindexfixedattribute.value.sety(secondweight)
-                                boneindexfixedattribute.value.setz(thirdweight)
-                                boneindexfixedattribute.value.setw(fourthweight)
-                            if areallindicessame:
-                                boneweightfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
-                                #8 is bone weight
-                                boneweightfixedattribute.name = PicaAttributeName(8)
-                                boneweightfixedattribute.value = PicaVectorFloat24()
-                                boneweightfixedattribute.value.setx(firstgroup)
-                                boneweightfixedattribute.value.sety(secondgroup)
-                                boneweightfixedattribute.value.setz(thirdgroup)
-                                boneweightfixedattribute.value.setw(fourthgroup)
-                                
-                            nouv0 = (obj.data.uv_layers.find("UVMap0") == -1)
-                            nouv1 = (obj.data.uv_layers.find("UVMap1") == -1)
-                            nouv2 = (obj.data.uv_layers.find("UVMap2") == -1)
-                            if nouv0:
-                                texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
-                                #4 is texcoord0
-                                texcoordfixedattribute.name = PicaAttributeName(4)
-                                texcoordfixedattribute.value = PicaVectorFloat24()
-                                texcoordfixedattribute.value.setx(0.0)
-                                texcoordfixedattribute.value.sety(0.0)
-                                texcoordfixedattribute.value.setz(0.0)
-                                texcoordfixedattribute.value.setw(1.0)
-                            if nouv1:
-                                texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
-                                #5 is texcoord1
-                                texcoordfixedattribute.name = PicaAttributeName(5)
-                                texcoordfixedattribute.value = PicaVectorFloat24()
-                                texcoordfixedattribute.value.setx(0.0)
-                                texcoordfixedattribute.value.sety(0.0)
-                                texcoordfixedattribute.value.setz(0.0)
-                                texcoordfixedattribute.value.setw(1.0)
-                            if nouv2:
-                                texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
-                                #6 is texcoord2
-                                texcoordfixedattribute.name = PicaAttributeName(6)
-                                texcoordfixedattribute.value = PicaVectorFloat24()
-                                texcoordfixedattribute.value.setx(0.0)
-                                texcoordfixedattribute.value.sety(0.0)
-                                texcoordfixedattribute.value.setz(0.0)
-                                texcoordfixedattribute.value.setw(1.0)
-                            #you will have no choice for tangents for now
-                            tanfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
-                            #6 is texcoord2
-                            tanfixedattribute.name = PicaAttributeName(6)
-                            tanfixedattribute.value = PicaVectorFloat24()
-                            tanfixedattribute.value.setx(0.0)
-                            tanfixedattribute.value.sety(0.0)
-                            tanfixedattribute.value.setz(0.0)
-                            tanfixedattribute.value.setw(1.0)
-                        
-                        newgfmesh.GFMeshCommandses.append(tempnewGFMeshCommand)
+                            boneweightfixedattribute.value.setx(firstgroup)
+                            boneweightfixedattribute.value.sety(secondgroup)
+                            boneweightfixedattribute.value.setz(thirdgroup)
+                            boneweightfixedattribute.value.setw(fourthgroup)
+                            fixedattributes.append(boneweightfixedattribute)
+                            
+                    if nouv0:
+                        texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                        #4 is texcoord0
+                        texcoordfixedattribute.name = PicaAttributeName(4)
+                        texcoordfixedattribute.value = PicaVectorFloat24()
+                        texcoordfixedattribute.value.setx(0.0)
+                        texcoordfixedattribute.value.sety(0.0)
+                        texcoordfixedattribute.value.setz(0.0)
+                        texcoordfixedattribute.value.setw(1.0)
+                        fixedattributes.append(texcoordfixedattribute)
+                    if nouv1:
+                        texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                        #5 is texcoord1
+                        texcoordfixedattribute.name = PicaAttributeName(5)
+                        texcoordfixedattribute.value = PicaVectorFloat24()
+                        texcoordfixedattribute.value.setx(0.0)
+                        texcoordfixedattribute.value.sety(0.0)
+                        texcoordfixedattribute.value.setz(0.0)
+                        texcoordfixedattribute.value.setw(1.0)
+                        fixedattributes.append(texcoordfixedattribute)
+                    if nouv2:
+                        texcoordfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                        #6 is texcoord2
+                        texcoordfixedattribute.name = PicaAttributeName(6)
+                        texcoordfixedattribute.value = PicaVectorFloat24()
+                        texcoordfixedattribute.value.setx(0.0)
+                        texcoordfixedattribute.value.sety(0.0)
+                        texcoordfixedattribute.value.setz(0.0)
+                        texcoordfixedattribute.value.setw(1.0)
+                        fixedattributes.append(texcoordfixedattribute)
+                    if len(obj.data.vertex_colors) == 0:
+                        colorfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                        #3 is color
+                        colorfixedattribute.name = PicaAttributeName(3)
+                        colorfixedattribute.value = PicaVectorFloat24()
+                        colorfixedattribute.value.setx(1.0)
+                        colorfixedattribute.value.sety(1.0)
+                        colorfixedattribute.value.setz(1.0)
+                        colorfixedattribute.value.setw(1.0)
+                        fixedattributes.append(colorfixedattribute)
+                    #you will have no choice on tangents for now
+                    tanfixedattribute = PicaFixedAttribute.__new__(PicaFixedAttribute)
+                    #2 is tangent
+                    tanfixedattribute.name = PicaAttributeName(2)
+                    tanfixedattribute.value = PicaVectorFloat24()
+                    tanfixedattribute.value.setx(0.0)
+                    tanfixedattribute.value.sety(0.0)
+                    tanfixedattribute.value.setz(0.0)
+                    tanfixedattribute.value.setw(1.0)
+                    fixedattributes.append(tanfixedattribute)
                     
-                    #change index commands that need to update
-                    for x in range(newgfmesh.submeshescount):
-                        indexcommands = newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands
-                        print(indexcommands)
-                        picacommands = PicaCommandReader(indexcommands)
-                        for x in range(len(picacommands.commands)):
-                            if(picacommands.commands[x].register.name == "GPUREG_NUMVERTICES"):
-                                picacommands.commands[x].parameters[0] = len(obj.data.polygons)*3
-                            if(picacommands.commands[x].register.name == "GPUREG_INDEXBUFFER_CONFIG"):
-                                picacommands.commands[x].parameters[0] = 0x81999999
-                         
-                        #set to new commands
-                        newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands = picacommands.serialize_commands()
-                        print("commandlength")
-                        print(len(newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands))
-                        newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commandslength = (len(newgfmesh.GFMeshCommandses[(3*submsh_idx)+2].commands))*4 
+                    
+                    #now on to regular attributes
+                    positionattribute = PicaAttribute.__new__(PicaAttribute)
+                    #0 is position
+                    positionattribute.name = PicaAttributeName(0)
+                    #3 is float
+                    positionattribute.attribformat = PicaAttributeFormat(3)
+                    positionattribute.elements = 3
+                    positionattribute.scale = 1.0
+                    attributes.append(positionattribute)
+                    
+                    #1 is normal
+                    normalattribute = PicaAttribute.__new__(PicaAttribute)
+                    normalattribute.name = PicaAttributeName(1)
+                    normalattribute.attribformat = PicaAttributeFormat(3)
+                    normalattribute.elements = 3
+                    normalattribute.scale = 1.0
+                    attributes.append(normalattribute)
+                    
+                    if(nouv0 == False):
+                        #4 is texcoord0
+                        texcoordattribute = PicaAttribute.__new__(PicaAttribute)
+                        texcoordattribute.name = PicaAttributeName(4)
+                        texcoordattribute.attribformat = PicaAttributeFormat(3)
+                        texcoordattribute.elements = 2
+                        texcoordattribute.scale = 1.0
+                        attributes.append(texcoordattribute)
+                    if(nouv1 == False):
+                        #5 is texcoord1
+                        texcoordattribute = PicaAttribute.__new__(PicaAttribute)
+                        texcoordattribute.name = PicaAttributeName(5)
+                        texcoordattribute.attribformat = PicaAttributeFormat(3)
+                        texcoordattribute.elements = 2
+                        texcoordattribute.scale = 1.0
+                        attributes.append(texcoordattribute)
+                    if(nouv2 == False):
+                        #6 is texcoord2
+                        texcoordattribute = PicaAttribute.__new__(PicaAttribute)
+                        texcoordattribute.name = PicaAttributeName(6)
+                        texcoordattribute.attribformat = PicaAttributeFormat(3)
+                        texcoordattribute.elements = 2
+                        texcoordattribute.scale = 1.0
+                        attributes.append(texcoordattribute)
+                    if areallweightssame:
+                        boneweightattribute = PicaAttribute.__new__(PicaAttribute)
+                        boneweightattribute.name = PicaAttributeName(8)
+                        boneweightattribute.attribformat = PicaAttributeFormat(1)
+                        boneweightattribute.elements = 4
+                        boneweightattribute.scale = 0.003921569
+                        attributes.append(boneweightattribute)
+                    if areallindicessame:
+                        boneindicesattribute = PicaAttribute.__new__(PicaAttribute)
+                        boneindicesattribute.name = PicaAttributeName(7)
+                        boneindicesattribute.attribformat = PicaAttributeFormat(1)
+                        boneindicesattribute.elements = 4
+                        boneindicesattribute.scale = 1.0
+                        attributes.append(boneindicesattribute)
+                    if len(obj.data.vertex_colors) > 0:
+                        colorsattribute = PicaAttribute.__new__(PicaAttribute)
+                        colorsattribute.name = PicaAttributeName(3)
+                        colorsattribute.attribformat = PicaAttributeFormat(1)
+                        colorsattribute.elements = 4
+                        colorsattribute.scale = 0.003921569
+                        attributes.append(colorsattribute)
+                        
+                    #calculate vertexstride
+                    vertexstride = 0
+                    for x in range(len(attributes)):
+                        currattribute = attributes[x]
+                        if currattribute.attribformat.name == "Byte":                             
+                            vertexstride = vertexstride + 1 
+                        if currattribute.attribformat.name == "Ubyte":                             
+                            vertexstride = vertexstride + 1 
+                        if currattribute.attribformat.name == "Short":                             
+                            vertexstride = vertexstride + 2
+                        if currattribute.attribformat.name == "Float":                             
+                            vertexstride = vertexstride + 4     
+                        
+                    #only now can we set the picacommands    
+                    bufferformats = 0
+                    bufferattributes = 0
+                    bufferpermutation = 0
+                    attributestotal = 0    
+                    for x in range(len(attributes)):
+                        currattribute = attributes[x]
+                        attributestotal = attributestotal + 1
+                        shift = attributestotal*4
+                        attribfmt = 0
+                        attribfmt = currattribute.attribformat.value
+                        attribfmt |= ((currattribute.elements - 1) & 3) << 2
+                        
+                        bufferformats |= attribfmt << shift
+                        bufferpermutation |= currattribute.name.value << shift
+                        bufferattributes |= x << shift
+                        
+                    bufferattributes |= (vertexstride & 0xff) << 48
+                    bufferattributes |= len(attributes) << 60
+                    for x in range(len(fixedattributes)):
+                        attributestotal = attributestotal + 1
+                        currfixedattribute = attributes[x]
+                        bufferformats |= 1 << (48+attributestotal)
+                        bufferpermutation |= currfixedattribute.name.value << attributestotal*4
+                        
+                    bufferformats |= (attributestotal -1) << 60
+                    enablecommands = []
+                    enablecommands.append(PicaCommand(PicaRegisters(697),(2684354560 |attributestotal-1),11))
+                    enablecommands.append(PicaCommand(PicaRegisters(578),(attributestotal-1),1))
+                    enablecommands.append(PicaCommand(PicaRegisters(699),(bufferpermutation >> 0),15))
+                    enablecommands.append(PicaCommand(PicaRegisters(700),(bufferpermutation >> 32),15))
+                    attribbufferslocation = []
+                    #attribbufferslocation.append(1)
+                    attribbufferslocation.append(0x03000000)
+                    attribbufferslocation.append(bufferformats >> 0)
+                    attribbufferslocation.append(bufferformats >> 32)
+                    attribbufferslocation.append(0x99999999)
+                    attribbufferslocation.append(bufferattributes >> 0)
+                    attribbufferslocation.append(bufferattributes >> 32)
+                    enablecommands.append(PicaCommand(PicaRegisters(512),attribbufferslocation,15))
+                    for x in range(len(fixedattributes)):
+                        currfixedattribute = attributes[x]
+                        scale = 1.0
+                        if (currattribute.name.name == "Color" or currattribute.name.name == "BoneWeight"): 
+                            scale = 0.0039215686
+                        currfixedattribute.value.div(scale)    
+                        fixedattribindex = []
+                        #fixedattribindex.append(1)
+                        fixedattribindex.append(len(attributes)+x)
+                        fixedattribindex.append(currfixedattribute.value.Word0)
+                        fixedattribindex.append(currfixedattribute.value.Word1)
+                        fixedattribindex.append(currfixedattribute.value.Word2)
+                        enablecommands.append(PicaCommand(PicaRegisters(562),fixedattribindex,15))
+                    if ((len(enablecommands) & 3) == 0):
+                        enablecommands.append(PicaCommand(PicaRegisters(0),0,0))
+                    enablecommands.append(PicaCommand(PicaRegisters(573),1,0))   
+                    bufferdata = enablecommands.serialize_commands()
+                    enablecommandsobject = GFMeshCommands.__new__(GFMeshCommands)  
+                    enablecommandsobject.__init2__(len(bufferdata)*4,len(newgfmesh.GFMeshCommandses)+1,len(bufferdata),bufferdata)
+                    newgfmesh.GFMeshCommandses.append(enablecommandsobject)
+                    
+                    
+                    #end of enable commands and start of disable commands
+                    disablecommands = []
+                    #locks position out of being a fixed attribute
+                    disablecommands.append(PicaCommand(PicaRegisters(515),[0,0,0],15))
+                    for x in range(12):
+                        disablecommands.append(PicaCommand(PicaRegisters(517+(x*3)),0,15))
+                        fixattribindexbool = True
+                        #double check this
+                        for x2 in range(len(fixedattributes)):
+                            if fixedattributes[x2].name.value == x:
+                                fixattribindexbool = False
+                        if fixattribindexbool:
+                            disablecommands.append(PicaCommand(PicaRegisters(562),[x,0,0,0],15))
+                            
+                    if ((len(disablecommands) & 3) == 0):
+                        disablecommands.append(PicaCommand(PicaRegisters(0),0,0))
+                    disablecommands.append(PicaCommand(PicaRegisters(573),1,0))                  
+                    bufferdata2 = disablecommands.serialize_commands() 
+                    disablecommandsobject = GFMeshCommands.__new__(GFMeshCommands)  
+                    disablecommandsobject.__init2__(len(bufferdata2)*4,len(newgfmesh.GFMeshCommandses)+1,len(bufferdata2),bufferdata2)
+                    newgfmesh.GFMeshCommandses.append(disablecommandsobject)
+                    
+                    #end of disable commands and start of index commands
+                    indexcommands = []
+                    indexcommands.append(PicaCommand(PicaRegisters(607),1,15))
+                    #make sure to check this
+                    indexcommands.append(PicaCommand(PicaRegisters(551),0x81999999,15))
+                    indexcommands.append(PicaCommand(PicaRegisters(552),len(obj.data.polygons)*3,15))
+                    indexcommands.append(PicaCommand(PicaRegisters(581),0,1))
+                    indexcommands.append(PicaCommand(PicaRegisters(559),1,15))
+                    indexcommands.append(PicaCommand(PicaRegisters(581),1,1))
+                    indexcommands.append(PicaCommand(PicaRegisters(561),1,15))
+                    #primitive mode locked to tris
+                    indexcommands.append(PicaCommand(PicaRegisters(606),0 << 8,8))
+                    indexcommands.append(PicaCommand(PicaRegisters(606),0 << 8,8))
+                    if ((len(indexcommands) & 3) == 0):
+                        indexcommands.append(PicaCommand(PicaRegisters(0),0,0))
+                    indexcommands.append(PicaCommand(PicaRegisters(573),1,0)) 
+                    rawbufferdata3 = indexcommands.serialize_commands()
+                    indexcommandsobject = GFMeshCommands.__new__(GFMeshCommands)  
+                    indexcommandsobject.__init2__(len(rawbufferdata3)*4,len(newgfmesh.GFMeshCommandses)+1,len(rawbufferdata3),rawbufferdata3)
+                    newgfmesh.GFMeshCommandses.append(indexcommandsobject)
+                    #omg it's finally done
+                                
+                 
                     
                     #recreate rawbuffer and indices
                     print(len(blendersubmeshes))

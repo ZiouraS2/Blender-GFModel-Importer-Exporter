@@ -79,7 +79,12 @@ class PicaVectorFloat24(object):
         self.Y = self.Y*c
         self.Z = self.Z*c
         self.W = self.W*c
-    
+       
+    def div(self, c):
+        self.X = self.X/c
+        self.Y = self.Y/c
+        self.Z = self.Z/c
+        self.W = self.W/c
 
     def setword0(self,num):	
         self.Word0 = num
