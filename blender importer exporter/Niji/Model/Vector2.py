@@ -10,8 +10,8 @@ class Vector2(object):
         self.X = 0
         self.Y = 0
 		
-        self.X = struct.unpack('f',file.read(4))[0]
-        self.Y = struct.unpack('f',file.read(4))[0]
+        self.X = struct.unpack('f',file.read(4))
+        self.Y = struct.unpack('f',file.read(4))
     def __init2__(self,x,y):
         self.X = (x,)
         self.Y = (y,)    

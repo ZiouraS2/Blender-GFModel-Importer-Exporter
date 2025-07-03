@@ -442,7 +442,7 @@ def recreate_gfmodel_data(coll, gfmodel):
         #create new hashnames for new meshes
         meshnamelist = []
         for obj in coll.objects:
-            if obj.type == 'MESH':
+            if obj.type == 'MESH' and not 'submesh' in obj.name:
                 #making sure submeshes aren't included
                 meshname = obj.name
                 meshnamelist.append(obj.name)              
@@ -486,11 +486,13 @@ def recreate_gfmodel_data(coll, gfmodel):
         #add/create new material stuff
         #for stuff that didn't already have material data we will need to also change matereialhash and picacommands values
         for obj in coll.objects:
-            #rebuild texture hash names
+            #find submeshes
             texturenames = []
+
             if obj.type == 'MESH':
                 mat = obj.data.materials[0]
-                gfmat = [mat1 for mat1 in gfmodel.GFMaterials if mat1.materialname.hashes[0][1] in mat.name]    
+                #maybe change to find based on mesh name and not mat name in case people change material names
+                gfmat = [mat1 for mat1 in gfmodel.GFMaterials if mat1.materialname.hashes[0][1] == mat.name.rsplit('.')[0]]    
                 #edit/change texture coords
                 tex_image_nodes = [node for node in mat.node_tree.nodes if node.type == 'TEX_IMAGE']
                 tex_coord_nodes = [node for node in mat.node_tree.nodes if node.type == 'MAPPING']
@@ -536,8 +538,8 @@ def recreate_gfmodel_data(coll, gfmodel):
                     # i love blender so-f-df-s-s-f- much!
                     gfmat[0].coords[x].translation.X = ((tex_coord_nodes[x].inputs['Location'].default_value[0])/2,)
                     gfmat[0].coords[x].translation.Y = ((tex_coord_nodes[x].inputs['Location'].default_value[1])/2,)            
-                    gfmat[0].coords[x].scale.X = (tex_coord_nodes[x].inputs['Scale'].default_value[0],)
-                    gfmat[0].coords[x].scale.Y = (tex_coord_nodes[x].inputs['Scale'].default_value[1],)                  
+                    gfmat[0].coords[x].scale.X = ((tex_coord_nodes[x].inputs['Scale'].default_value[0]),)
+                    gfmat[0].coords[x].scale.Y = ((tex_coord_nodes[x].inputs['Scale'].default_value[1]),)                  
                 #to update material texture uv map source  
                 picacommands = PicaCommandReader(gfmat[0].picacommands)
                 for x in range(len(picacommands.commands)):
@@ -557,10 +559,16 @@ def recreate_gfmodel_data(coll, gfmodel):
             defaultvaluesmesh = gfmodel.GFMeshes[0]
             newmeshes = []
             submsh_idx = 0
-            if obj.type == 'MESH':
+            if obj.type == 'MESH' and not 'submesh' in obj.name:
                 mesh = obj
                 ogmesh = None
                 meshesfound = []
+                submeshesfound1 = []
+                for obj in coll.objects:
+                    if obj.type == 'MESH':
+                        submeshnme = obj.name+"submesh"
+                        if (submeshnme in obj.name):
+                            submeshesfound1.append(obj.name)
                 submesh_name = obj.name.rsplit('submesh')[0]
                 mesh_name = obj.name.rsplit('.')[0]
                 for x in range(len(gfmodel.GFMeshes)):
@@ -584,7 +592,9 @@ def recreate_gfmodel_data(coll, gfmodel):
                     hasher = GFNV1()
                     hasher.hashstring(obj.name)
                     gfmesh.namehash = (hasher.hashcode.value).to_bytes(4, 'little')
-                    blendersubmeshes = [node for node in coll.objects if node.type == 'MESH' and obj.name in node.name]
+                    blendersubmeshes = []
+                    blendersubmeshes.append(mesh)
+                    blendersubmeshes = [node for node in submeshesfound1 if node.type == 'MESH']
                     gfmesh.submeshescount = len(blendersubmeshes)
                         
                     #convoluted way to obtain the correct value for this
@@ -633,12 +643,12 @@ def recreate_gfmodel_data(coll, gfmodel):
         gfmodel.boundingboxmaxvector = newboundingboxmaxvector
 
 def create_gfmaterial_data(coll, gfmodel, mesh, materialnames, shadernames, texturenames):
-        material = mesh.data.materials[0]
-        if material.name not in materialnames:
-            materialnames.append(material.name)
+    material = mesh.data.materials[0]
+    if 'submesh' not in mesh.name and mesh.name not in materialnames:
+        materialnames.append(mesh.name.rsplit('\x00'))
         gfmaterialdata = GFMaterial.__new__(GFMaterial)
         newmaterialname = GFHashName2.__new__(GFHashName2)
-        newmaterialname.__init2__(material.name)      
+        newmaterialname.__init2__(mesh.name.rsplit('\x00'))      
         #the frag/vert shader will have to be exported with files
         newfragshadername = GFHashName2.__new__(GFHashName2)
         newfragshadername.__init2__("Map00_default_AGREF")       
@@ -842,10 +852,10 @@ def create_gfmaterial_data(coll, gfmodel, mesh, materialnames, shadernames, text
         #should be constant
         gfmaterialdata.renderlayer = 0
         gfmaterialdata.reflectionidk = 3441483069
-        #still undocumented
-        gfmaterialdata.reflectionr = newconstcolor
-        gfmaterialdata.reflectiong = newconstcolor
-        gfmaterialdata.reflectionb = newconstcolor
+        #copy of lut hash ids
+        gfmaterialdata.reflectionr = 0
+        gfmaterialdata.reflectiong = 0
+        gfmaterialdata.reflectionb = 0
         #end of commands section
         
         #check to only add unique materials

@@ -34,6 +34,8 @@ class GFTextureCoord(object):
         self.texturename.writeHashName(f)
         f.write(self.unitindex.to_bytes(1, 'little'))
         f.write(self.mappingtype.value.to_bytes(1, 'little'))
+        print(self.scale.X)
+        print(self.scale.Y)
         self.scale.writeVec2(f)
         f.write(struct.pack('f',self.rotation[0]))
         self.translation.writeVec2(f)

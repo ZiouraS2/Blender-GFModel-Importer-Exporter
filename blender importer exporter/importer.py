@@ -76,10 +76,13 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 
                 # Create Blender mesh
                 # Adding mesh and submesh names in the same string for more clarity
-                if bpy.data.meshes.find(submesh_name) != -1:
+
+                if submesh_name not in bpy.data.meshes:
                     me = bpy.data.meshes.new(submesh_name)
                 else:
-                    me = bpy.data.meshes.new(submesh_name+"submesh")
+                    submesh_name = submesh_name+"submesh"
+                    me = bpy.data.meshes.new(submesh_name)
+
                 me.from_pydata(vertices, [], faces)
                 me.update()
                 
@@ -594,14 +597,14 @@ def create_material(gfmodel,mesh):
                 mapnode.inputs['Rotation'].default_value[0] = math.radians(texcoord.rotation[0])
                 
                 # i love blender so-f-df-s-s-f- much!
-                mapnode.inputs['Location'].default_value[0]  = texcoord.translation.X*2.0
-                mapnode.inputs['Location'].default_value[1]  = texcoord.translation.Y*2.0
+                mapnode.inputs['Location'].default_value[0]  = texcoord.translation.X[0]*2.0
+                mapnode.inputs['Location'].default_value[1]  = texcoord.translation.Y[0]*2.0
                 
                 print("scales")
-                print(texcoord.scale.X)
-                print(texcoord.scale.Y)
-                mapnode.inputs['Scale'].default_value[0] = texcoord.scale.X
-                mapnode.inputs['Scale'].default_value[1] = texcoord.scale.Y
+                print(texcoord.scale.X[0])
+                print(texcoord.scale.Y[0])
+                mapnode.inputs['Scale'].default_value[0] = texcoord.scale.X[0]
+                mapnode.inputs['Scale'].default_value[1] = texcoord.scale.Y[0]
                 #link tex coord to mapping
                 
                 if(uvs):
