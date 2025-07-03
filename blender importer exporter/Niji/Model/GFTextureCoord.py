@@ -35,7 +35,7 @@ class GFTextureCoord(object):
         f.write(self.unitindex.to_bytes(1, 'little'))
         f.write(self.mappingtype.value.to_bytes(1, 'little'))
         self.scale.writeVec2(f)
-        f.write(struct.pack('f',self.rotation))
+        f.write(struct.pack('f',self.rotation[0]))
         self.translation.writeVec2(f)
         f.write(self.wrapu.value.to_bytes(4, 'little'))
         f.write(self.wrapv.value.to_bytes(4, 'little'))
@@ -47,20 +47,20 @@ class GFTextureCoord(object):
         self.readGFTextureCoord(file)
         
     #only one which won't have params    
-    def __init2__(self,file):
-        texnameplaceholder = GFHashName2.__new__(GFHashName2)
+    def __init2__(self):
+        texnameplaceholder = GFHashName2.GFHashName2.__new__(GFHashName2.GFHashName2)
         texnameplaceholder.__init2__("placeholder")
         self.texturename = texnameplaceholder
         self.unitindex = 0
         self.mappingtype = GFTextureMappingType.GFTextureMappingType(0)
-        vec2placeholder = Vector2.__new__(Vector2)
+        vec2placeholder = Vector2.Vector2.__new__(Vector2.Vector2)
         vec2placeholder.__init2__(0,0)
         self.scale = vec2placeholder
         print("textue coord reads")
         print(self.texturename.hashes[0][1])
         print(self.scale.X)
         print(self.scale.Y)
-        self.rotation = float(0)
+        self.rotation = struct.unpack('f',b'\x00\x00\x00\x00')
         self.translation = vec2placeholder
         self.wrapu = GFTextureWrap.GFTextureWrap(0)
         self.wrapv = GFTextureWrap.GFTextureWrap(0)
@@ -69,23 +69,23 @@ class GFTextureCoord(object):
         self.minLOD = 0
         
     def gettransform(self):
-        placeholdermatrix = Matrix4x4.__new__(Matrix4x4)
+        placeholdermatrix = Matrix4x4.Matrix4x4.__new__(Matrix4x4.Matrix4x4)
         placeholdermatrix.__init2__(1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0)
-        scale,rotation,translation,0
-        sx = self.scale.X
-        sy = self.scale.Y
+        #scale,rotation,translation,0
+        sx = float(self.scale.X[0])
+        sy = float(self.scale.Y[0])
         
-        tx = self.translation.X
-        ty = self.translation.Y
+        tx = float(self.translation.X[0])
+        ty = float(self.translation.Y[0])
         
-        ca = float(math.cos(self.rotation))
-        sa = float(math.Sin(self.rotation))
+        ca = float(math.cos(self.rotation[0]))
+        sa = float(math.sin(self.rotation[0]))
         
-        placeholdermatrix.a11 = sx*ca
-        placeholdermatrix.a12 = sy*sa
-        placeholdermatrix.a21 = sx*(-1*sa)
-        placeholdermatrix.a22 = sy*ca
-        placeholdermatrix.a41 = ((0.5*sa - 0.5*ca)+0.5 - tx)
-        placeholdermatrix.a42 = ((0.5*(-1*sa) - 0.5*ca)+0.5 - ty)
+        placeholdermatrix.a11 = (sx*ca,)
+        placeholdermatrix.a12 = (sy*sa,)
+        placeholdermatrix.a21 = (sx*(-1*sa),)
+        placeholdermatrix.a22 = (sy*ca,)
+        placeholdermatrix.a41 = (((0.5*sa - 0.5*ca)+0.5 - tx),)
+        placeholdermatrix.a42 = (((0.5*(-1*sa) - 0.5*ca)+0.5 - ty),)
         
         return placeholdermatrix

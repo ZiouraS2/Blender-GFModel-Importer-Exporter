@@ -114,27 +114,27 @@ class PicaVectorFloat24(object):
             
         return word
         
-    def calculatewords(x,y,z,w):
-        wx = getword24(x)
-        wy = getword24(y)
-        wz = getword24(x)
-        ww = getword24(w)
+    def calculatewords(self,x,y,z,w):
+        wx = self.getword24(x)
+        wy = self.getword24(y)
+        wz = self.getword24(x)
+        ww = self.getword24(w)
         
         self.word0 = ((ww << 8) | (wz >> 16))
         self.word1 = ((wz << 16) | (wy >> 9))
         self.word2 = ((wy << 24) | (wx >> 0))
         
     def setx(self,value):
-        calculatewords(value,self.y,self.z,self.w)
+        self.calculatewords(value,self.Y,self.Z,self.W)
         
     def sety(self,value):
-        calculatewords(self.x,value,self.z,self.w)
+        self.calculatewords(self.X,value,self.Z,self.W)
         
     def setz(self,value):
-        calculatewords(self.x,self.y,value,self.w)
+        self.calculatewords(self.X,self.Y,value,self.W)
 
     def setw(self,value):
-        calculatewords(self.x,self.y,self.z,value)
+        self.calculatewords(self.X,self.Y,self.Z,value)
 
     def __init__(self):	
         self.X = 0.0

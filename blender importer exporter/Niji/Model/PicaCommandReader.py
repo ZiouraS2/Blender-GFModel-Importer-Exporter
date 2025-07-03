@@ -14,8 +14,8 @@ class PicaCommandReader:
     def setindexcommand(self,cmd):
         self.uniformindex = (cmd & 0xff) << 2
         self.uniform32bits = (cmd >> 31) != 0
-        print(self.uniformindex)
-        print(self.uniform32bits)
+        #print(self.uniformindex)
+        #print(self.uniform32bits)
         
     def setvalueparameters(self,params,uniformindex):
         for x in range(len(params)):
@@ -52,6 +52,13 @@ class PicaCommandReader:
         if(cmd.register.value >= 0x02C1 and cmd.register.value <= 0x02C8):
             self.setvalueparameters(cmd.parameters,self.uniformindex)
     
+    def __init2__(self,commands):
+        self.commands = commands
+        self.vecF24 = PicaFloatVector24.PicaVectorFloat24()
+        self.uniformindex = 0
+        self.uniform32bits = True
+        self.vtxuniforms = UniformManager.UniformManager()
+    
     def __init__(self,binarydata):	
         self.commands = []
         self.uintcommands = []
@@ -83,7 +90,7 @@ class PicaCommandReader:
                     parameters.append(param)
                     #print(PicaRegisters.PicaRegisters(commandid).name)
                     
-                    cmd = PicaCommand.PicaCommand(PicaRegisters.PicaRegisters(commandid),parameters,mask)
+                    cmd = PicaCommand.PicaCommand(PicaRegisters.PicaRegisters(commandid),parameters,mask,False)
                     commandid += 1
                     
                     self.checkvtxunifromscmd(cmd)
@@ -102,7 +109,7 @@ class PicaCommandReader:
                     index+=1
                     
                 #print(PicaRegisters.PicaRegisters(commandid).name)
-                cmd = PicaCommand.PicaCommand(PicaRegisters.PicaRegisters(commandid),parameters,mask)
+                cmd = PicaCommand.PicaCommand(PicaRegisters.PicaRegisters(commandid),parameters,mask,False)
                 
                 self.checkvtxunifromscmd(cmd)
                 
@@ -115,25 +122,35 @@ class PicaCommandReader:
         commandlist = []
         for x in range(len(self.commands)):
             currcommand = self.commands[x]
-            print(currcommand.register.name)
+            #print(currcommand.register.name)
             #append first parameter first
             commandlist.append(currcommand.parameters[0])
-            print(currcommand.parameters[0])
+            #check is command is consecutive
+            consecutivebit = (2147483648 if currcommand.consecutive == True else 0)
+            
             #command is next, btu we need to rebuild it from the data in the picacommand
             if(len(currcommand.parameters) > 1):
                 extraparams = (((len(currcommand.parameters) - 1) & 0x7ff) << 20)
-                newcommand = (currcomand.register.value | (currcommand.mask << 16) | extraparams | True)
+                newcommand = (currcommand.register.value | (currcommand.mask << 16) | extraparams | consecutivebit)
                 #add command
                 commandlist.append(newcommand)
                 for x in range(len(currcommand.parameters) - 1):
                     commandlist.append(currcommand.parameters[x+1])
                     #align stuff
-                    if((len(commandlist) & 1) != 0):
+                if((len(commandlist) & 1) != 0):
                         commandlist.append(0)
             else:
                 newcommand = (currcommand.register.value | (currcommand.mask << 16))
                 #add command
                 commandlist.append(newcommand)
                 
-            print(commandlist)
+            #print(commandlist)
+        #allignment to 16 bytes
+        while (((len(commandlist)+2) & 3) != 0):
+            print("commandlist length")
+            print(len(commandlist))
+            commandlist.append(0)
+        #end command
+        commandlist.append(1)
+        commandlist.append(983613)
         return commandlist

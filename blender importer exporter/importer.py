@@ -72,9 +72,14 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                 submesh_name = f"{mesh_name}_{submesh_idx}"
                 if hasattr(submesh.gfsubmeshpart1, 'submeshname') and submesh.gfsubmeshpart1.submeshname.strip('\x00'):
                     submesh_name = submesh.gfsubmeshpart1.submeshname.strip('\x00')
+                    mesh_name = gfmesh.namestr.strip('\x00')
                 
                 # Create Blender mesh
-                me = bpy.data.meshes.new(submesh_name)
+                # Adding mesh and submesh names in the same string for more clarity
+                if bpy.data.meshes.find(submesh_name) != -1:
+                    me = bpy.data.meshes.new(submesh_name)
+                else:
+                    me = bpy.data.meshes.new(submesh_name+"submesh")
                 me.from_pydata(vertices, [], faces)
                 me.update()
                 
@@ -91,7 +96,6 @@ def load_gfmdl(filepath, import_bones=True, import_materials=True):
                             vert_idx = loop.vertex_index
 
                             tangent = tangents[vert_idx]
-                            tangent.normalize()
 
                             # Set RGBA 
                             vcol_layer.data[i].color = (tangent.x, tangent.y, tangent.z, 1.0)
@@ -243,6 +247,7 @@ def extract_vertex_data(submesh):
         vertex_data = {
             'position': None,
             'normal': None,
+            'tangent': None,
             'texcoord0': None,
             'color': None,
             'boneweight': None,
@@ -505,7 +510,7 @@ def create_material(gfmodel,mesh):
         print(meshname[0])
         for x in range(len(gfmodel.GFMaterials)):
             print(gfmodel.GFMaterials[x].materialname.hashes[0][1])
-            if(gfmodel.GFMaterials[x].materialname.hashes[0][1] == meshname[0]):
+            if(gfmodel.GFMaterials[x].materialname.hashes[0][1] in meshname[0]):
                 gfmaterial = gfmodel.GFMaterials[x]
         
         if hasattr(gfmaterial, 'materialname'):

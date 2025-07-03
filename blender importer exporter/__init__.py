@@ -84,6 +84,7 @@ class ExportGFMDL(bpy.types.Operator, ExportHelper):
         from . import exporter
         
         # Get objects to export
+        #consider adding for item in context.selected_ids for outliner selections
         objects = context.selected_objects      
         
         return exporter.save_gfmdl(

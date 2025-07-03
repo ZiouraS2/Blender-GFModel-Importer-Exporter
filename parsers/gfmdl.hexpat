@@ -346,7 +346,7 @@ struct GFMesh1 {
     GFMeshCommands1 commands;
     GFMeshCommands commands2[CommandsCount - 1];
     GFSubMesh gfsubmesh;
-    skippadding3;
+    //skippadding3;
     i1 = 0;
 };
 
@@ -440,4 +440,4 @@ struct GFModel {
 };
 
 
-GFModel gfmodel @ 0x00000000;
+GFModel gfmodel @ 0x00000080;

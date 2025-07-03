@@ -137,12 +137,12 @@ def MakeDirs(MasterList,file,path):
     for x in MasterList:
             directory_name = ""
             count2 = 0
-            newpath = path.rsplit('\\', 1)[0];
-            print("newpath num")
-            print(path.rsplit('\\', 1))
-            if (len(path.rsplit('\\', 1)) > 1):
+            if "\\" in path:
+                newpath = path.rsplit('\\', 1)[0];
                 newpath = newpath+"\\"
-                directory_name = newpath
+            else:
+                newpath = ""
+            directory_name = newpath
             for y in MasterList[count][0]:
                 directory_name = directory_name+(str(MasterList[count][0][count2])+"/")
                 count2 = count2 + 1
@@ -162,6 +162,7 @@ def MakeDirs(MasterList,file,path):
             filename = (("("+str(MasterList[count][1])+")"+filetype)).replace('\x00','')
             print(filename)
             print(directory_name)
+            print(path)
             file.seek(MasterList[count][2])
             filedata = file.read(MasterList[count][3])
             with open(directory_name+filename, "wb") as file1:
@@ -255,12 +256,6 @@ def checkFileType(offset,file):
     bytedata5 = file.read(4)
     if(bytedata5 == b'\x00\x00\x06\x00'):
         magic = "gfanimation"
-    if(bytedata5 == b'\x00\x05\x12\x14'):
-        magic = "gfbcol"
-    if(bytedata5 == b'\x00\x00\x01\x00'):
-        magic = "gftrainermodelpack"
-    if(bytedata5 == b'\x11\x01\x00\x00'):
-        magic = "gfanimationpack"
     
     if OverrideFileName == True:
         return magic

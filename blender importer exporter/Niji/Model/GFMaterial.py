@@ -77,9 +77,11 @@ class GFMaterial(object):
         self.renderpriority = int.from_bytes(file.read(4),"little")
         self.materialhash = int.from_bytes(file.read(4),"little")
         self.renderlayer = int.from_bytes(file.read(4),"little")
+        #not RGBA, copy paste of luthashids
         self.reflectionr = RGBA.RGBA(file)
         self.reflectiong = RGBA.RGBA(file)
         self.reflectionb = RGBA.RGBA(file)
+        
         self.reflectionidk = int.from_bytes(file.read(4),"little")
         self.picacommands = []
         for x in range(self.commandslength >> 2):
@@ -105,7 +107,7 @@ class GFMaterial(object):
         f.write(self.luthash1id.to_bytes(4, 'little'))
         f.write(self.luthash2id.to_bytes(4, 'little'))
         helperfunctions.skippadding1(4,f)
-        f.write(self.bumptexture.to_bytes(1, 'little'))
+        f.write(self.bumptexture.to_bytes(1, 'little', signed = True))
         f.write(self.constant0assignment.to_bytes(1, 'little'))
         f.write(self.constant1assignment.to_bytes(1, 'little'))
         f.write(self.constant2assignment.to_bytes(1, 'little'))
@@ -125,8 +127,8 @@ class GFMaterial(object):
         self.emissioncolor.writeRGBA(f)
         self.ambientcolor.writeRGBA(f)
         self.diffusecolor.writeRGBA(f)
-        f.write(self.edgetype.to_bytes(4, 'little'))
-        f.write(self.idedgeenable.to_bytes(4, 'little'))
+        f.write(self.edgetype.to_bytes(4, 'little', signed = True))
+        f.write(self.idedgeenable.to_bytes(4, 'little', signed = True))
         f.write(self.edgeid.to_bytes(4, 'little'))
         f.write(self.projectiontype.to_bytes(4, 'little'))
         f.write(struct.pack('f',self.rimpower[0]))
@@ -134,7 +136,7 @@ class GFMaterial(object):
         f.write(struct.pack('f',self.phongpower[0]))
         f.write(struct.pack('f',self.phongscale[0]))
         f.write(self.idedgeoffsetenable.to_bytes(4, 'little'))
-        f.write(self.edgemapalphamask.to_bytes(4, 'little'))
+        f.write(self.edgemapalphamask.to_bytes(4, 'little',signed = True))
         f.write(self.baketexture0.to_bytes(4, 'little'))
         f.write(self.baketexture1.to_bytes(4, 'little'))
         f.write(self.baketexture2.to_bytes(4, 'little'))
@@ -163,6 +165,7 @@ class GFMaterial(object):
         self.reflectionb.writeRGBA(f)
         f.write(self.reflectionidk.to_bytes(4, 'little'))
         for x in range(self.commandslength >> 2):
+            #print(self.picacommands[x])
             f.write(self.picacommands[x].to_bytes(4, 'little'))  
         helperfunctions.skippadding1(16,f)
         #where the gfsection ends

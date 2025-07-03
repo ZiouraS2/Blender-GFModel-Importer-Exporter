@@ -97,6 +97,7 @@ class GFMesh(object):
             tempVec = PicaFloatVector24.PicaVectorFloat24()
             fixed.append(tempVec)
         
+        print(len(self.GFMeshCommandses))
         enablecommands = self.GFMeshCommandses[0+(3*submesh_index)].commands
         print(enablecommands)
         picacommands = PicaCommandReader.PicaCommandReader(enablecommands)
@@ -140,7 +141,7 @@ class GFMesh(object):
         for x in range(attributestotal):
             #fixed attributes
             print(submesh.gfsubmeshpart1.submeshname)
-            print("attributes")
+            print("fixed attribute")
             print(i2)
             print(((bufferformats >> (48+i2)) & 1))
             if(((bufferformats >> (48+i2)) & 1) != 0):
@@ -151,11 +152,12 @@ class GFMesh(object):
                 if(name == "Color"):
                     scale = 3
                 if(name == "BoneWeight"):
-                    scale = 0.007874016          
+                    scale = 0.0039215686 #was 0.007874016          
                 fixed[i2].mul(scale)
                 submesh.fixedattributes.append(PicaFixedAttribute.PicaFixedAttribute(picaname,fixed[i2]))
             #attributes
             else:
+                print("attribute")
                 permutationidx = ((bufferattributes >> i2*4) & 0xf)
                 attributename = ((bufferpermutation >> permutationidx*4) & 0xf)
                 attributefmt = ((bufferformats >> permutationidx*4) & 0xf)

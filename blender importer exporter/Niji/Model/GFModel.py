@@ -102,6 +102,8 @@ class GFModel(object):
         self.boundingboxmaxvector.writeVec4(f)
         self.transformmatrix.writeMatrix4x4(f)
         #constant section?
+        print("constant section offset")
+        print(f.tell())
         f.write(b'\x00\x00\x00\x00')
         f.write(b'\x10\x00\x00\x00')
         f.write(b'\x00\x00\x00\x00')
@@ -111,7 +113,11 @@ class GFModel(object):
         f.write(b'\x00\x00\x00\x00')
         f.write(b'\x00\x00\x00\x00')
         
+        
+        
         #gfbones section
+        print("gfbones section offset")
+        print(f.tell())
         print("gfbones count")
         print(len(self.GFBones))
         f.write(self.bonescount.to_bytes(4, 'little'))
@@ -139,7 +145,11 @@ class GFModel(object):
         newGFSection = GFSection.GFSection.__new__(GFSection.GFSection)
         newGFSection.__init2__("gfmodel",(possec1end - possec1start))
         newGFSection.writenewsection(f)
-        f.seek(possec1end)    
+        f.seek(possec1end)   
+        print(self.materialnames.numofhashes)    
+        print(len(self.GFBones))  
+        print(len(self.GFMeshes))         
+        print(len(self.GFMaterials))           
         for i in range(self.materialnames.numofhashes):
             print()
             self.GFMaterials[i].writematerial(f)

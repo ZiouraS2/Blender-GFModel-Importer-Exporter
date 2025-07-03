@@ -17,6 +17,11 @@ class Vector4(object):
         self.Y = struct.unpack('f',file.read(4))
         self.Z = struct.unpack('f',file.read(4))
         self.W = struct.unpack('f',file.read(4))
+    def __init2__(self,X,Y,Z,W):
+        self.X = (X,)
+        self.Y = (Y,)
+        self.Z = (Z,)
+        self.W = (W,)
     def writeVec4(self,f):
         f.write(struct.pack('f',self.X[0]))
         f.write(struct.pack('f',self.Y[0]))
